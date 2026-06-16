@@ -1,0 +1,76 @@
+{
+  "name": "typographus",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Editorial & typesetting engine — Markdown/DOCX to high-fidelity print & ePub.",
+  "author": "Nexflamma S.r.l. <info@nexflamma.net>",
+  "license": "SEE LICENSE IN LICENSE",
+  "type": "module",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "app": "vite build && electron .",
+    "app:dev": "cross-env ELECTRON_START_URL=http://localhost:5174 electron .",
+    "dist:win": "vite build && electron-builder --win",
+    "dist:mac": "vite build && electron-builder --mac",
+    "dist:dir": "vite build && electron-builder --dir",
+    "license:make": "node tools/license-maker.mjs"
+  },
+  "dependencies": {
+    "@fontsource-variable/inter": "^5.2.8",
+    "@fontsource-variable/jetbrains-mono": "^5.2.8",
+    "@fontsource-variable/newsreader": "^5.2.10",
+    "@fontsource-variable/source-serif-4": "^5.2.9",
+    "jszip": "^3.10.1",
+    "mammoth": "^1.8.0",
+    "marked": "^14.1.3",
+    "material-symbols": "^0.45.1",
+    "pagedjs": "^0.4.3"
+  },
+  "devDependencies": {
+    "cross-env": "^7.0.3",
+    "electron": "^32.2.0",
+    "electron-builder": "^25.1.8",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.10"
+  },
+  "build": {
+    "appId": "com.nexflamma.typographus",
+    "productName": "Typographus",
+    "copyright": "© 2026 Nexflamma S.r.l.",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*"
+    ],
+    "extraResources": [
+      "LICENSE",
+      "THIRD-PARTY-NOTICES.md"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.ico"
+    },
+    "mac": {
+      "target": [
+        { "target": "dmg", "arch": ["arm64", "x64"] }
+      ],
+      "category": "public.app-category.productivity",
+      "icon": "build/icon.png",
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
+    },
+    "dmg": {
+      "title": "Typographus ${version}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "shortcutName": "Typographus"
+    }
+  }
+}

@@ -1,0 +1,101 @@
+TYPOGRAPHUS — END USER LICENSE AGREEMENT (EULA)
+Contratto di Licenza con l'Utente Finale
+
+Copyright © 2026 Nexflamma S.r.l. — All rights reserved / Tutti i diritti riservati.
+Software proprietario. Proprietary software.
+
+================================================================================
+LEGAL IDENTITY & CORPORATE INFORMATION — Identità legale
+================================================================================
+Business Entity:        Nexflamma S.r.l.
+Registered Office:      Via della Seta 45, 20100 Milano (MI), Italy
+Company Registration:   REA MI-1234567
+VAT Number (P.IVA):     IT12345678901
+Official Communication: info@nexflamma.net
+Data Protection (DPO):  privacy@nexflamma.net
+Applicable Frameworks:  D.Lgs. 206/2005 (Codice del Consumo),
+                        Regolamento (UE) 2016/679 (GDPR)
+
+Product:                Typographus — Editorial & Typesetting Engine
+Version:                0.1
+
+================================================================================
+1. GRANT OF LICENSE — Concessione della licenza
+================================================================================
+Nexflamma S.r.l. ("Nexflamma") grants you a non-exclusive, non-transferable,
+revocable license to install and execute Typographus ("the Software") according
+to the selected duration and seat matrix. Where activation is required, each
+execution may require cryptographic validation of the underlying node through
+hardware fingerprinting (HWID).
+
+Nexflamma concede una licenza non esclusiva, non trasferibile e revocabile per
+installare ed eseguire il Software secondo la durata e il numero di postazioni
+acquistati. Il Software è concesso in licenza, non venduto.
+
+================================================================================
+2. DIRITTO DI RECESSO & WAIVER OF WITHDRAWAL — Recesso
+================================================================================
+In conformità con l'Articolo 59, lett. o) del Codice del Consumo italiano e con
+le direttive UE sui contratti a distanza: poiché il prodotto consiste in
+contenuti digitali forniti tramite download immediato, l'utente riconosce ed
+accetta espressamente che, con l'avvio della fornitura o l'attivazione della
+chiave di licenza, si perde il diritto di recesso di 14 giorni. Nexflamma offre
+tuttavia una garanzia di rimborso commerciale valida per 72 ore (3 giorni)
+dall'acquisto.
+
+English: Under EU and Italian law, the consumer explicitly consents to immediate
+performance and acknowledges that the 14-day right of withdrawal is waived upon
+the start of download or activation. Nexflamma offers a direct commercial refund
+window of 72 hours (3 days) from original acquisition.
+
+================================================================================
+3. RESTRICTIONS & HARDWARE FINGERPRINTING — Restrizioni
+================================================================================
+You may not: (a) attempt to bypass the automated HWID licensing matrix;
+(b) disassemble, decompile, or reverse engineer any part of the Nexflamma binary
+assets, except to the extent expressly permitted by applicable mandatory law;
+(c) transfer, sublease, rent, or sublicense active activation licenses to
+unauthorized nodes; (d) remove or alter any proprietary notices.
+
+Documents, layouts and files YOU author with the Software remain entirely YOUR
+property. Nexflamma claims no rights over the editorial content you create.
+I documenti e gli impaginati creati dall'utente restano di esclusiva proprietà
+dell'utente.
+
+================================================================================
+4. INTELLECTUAL PROPERTY — Proprietà intellettuale
+================================================================================
+The Software, its source code, design system, trademarks and the "Typographus"
+and "Nexflamma" names are and remain the exclusive property of Nexflamma S.r.l.
+Third-party open-source components are licensed under their respective licenses
+(see THIRD-PARTY-NOTICES).
+
+================================================================================
+5. WARRANTY DISCLAIMER & LIABILITY — Garanzia e responsabilità
+================================================================================
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED. To the maximum extent permitted by law, Nexflamma shall not be liable
+for any indirect, incidental or consequential damages. Nothing in this license
+limits the consumer's mandatory statutory rights under the Codice del Consumo.
+
+================================================================================
+6. PRIVACY (GDPR) — Trattamento dei dati
+================================================================================
+Nexflamma acts as Data Controller pursuant to Art. 13 of Regulation (EU)
+2016/679. Typographus stores documents and preferences LOCALLY on your device
+(LocalStorage); no editorial content is transmitted to Nexflamma. To exercise
+your rights (Artt. 15-22 GDPR) contact privacy@nexflamma.net.
+
+================================================================================
+7. GOVERNING LAW & JURISDICTION — Legge applicabile
+================================================================================
+Questi termini sono regolati dalla legge italiana. Qualsiasi controversia sarà
+devoluta alla competenza esclusiva del Foro di Milano, fatto salvo il foro
+inderogabile del consumatore secondo il Codice del Consumo.
+
+--------------------------------------------------------------------------------
+L'uso continuato del Software costituisce piena accettazione del presente
+contratto. Continued use of the Software constitutes full acceptance of this
+agreement.
+
+© 2026 Nexflamma S.r.l. — Via della Seta 45, Milano, Italy — P.IVA IT12345678901

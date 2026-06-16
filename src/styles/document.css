@@ -1,0 +1,293 @@
+/* =========================================================================
+   Editorial document — the "paper", typographic rules, print output.
+   Applies in both Galley (continuous) and Paged (paged.js) modes.
+   ========================================================================= */
+
+/* ---- Paper sheet (galley mode) ---- */
+.paper {
+  position: relative;
+  background: var(--doc-paper);
+  color: var(--doc-ink);
+  box-shadow: var(--paper-shadow);
+  border-radius: 2px;
+  width: var(--page-w, 210mm);
+  min-height: var(--page-h, 297mm);
+  padding: var(--mt, 24mm) var(--mr, 20mm) var(--mb, 24mm) var(--ml, 20mm);
+}
+
+/* ---- Editorial typographic system ---- */
+.doc {
+  font-family: var(--doc-font-serif);
+  font-size: var(--body-size, 10.5pt);
+  line-height: var(--leading, 1.5);
+  text-align: var(--text-align, justify);
+  hyphens: var(--hyphens, auto);
+  -webkit-hyphens: var(--hyphens, auto);
+  font-feature-settings: "liga" var(--liga, 1), "clig" var(--liga, 1), "kern" 1, "onum" var(--oldstyle, 0);
+  text-rendering: optimizeLegibility;
+  orphans: var(--orphans, 2);
+  widows: var(--widows, 2);
+  color: var(--doc-ink);
+}
+.doc[data-cols="2"] .doc-flow,
+.doc[data-cols="3"] .doc-flow {
+  column-count: var(--cols, 1);
+  column-gap: var(--col-gap, 6mm);
+  column-rule: var(--col-rule, none);
+}
+
+.doc p { margin: 0; text-indent: var(--para-indent, 1.2em); }
+.doc p.first, .doc > .doc-flow > p:first-of-type { text-indent: 0; }
+.doc .lead { text-indent: 0; }
+
+/* Headings — editorial display serif */
+.doc h1, .doc h2, .doc h3, .doc h4 {
+  font-family: var(--doc-font-display);
+  font-weight: 600;
+  line-height: 1.12;
+  text-align: left;
+  hyphens: none;
+  margin: 1.1em 0 0.35em;
+  break-after: avoid;
+  text-wrap: balance;
+}
+.doc h1 { font-size: 2.0em; margin-top: 0; }
+.doc h2 { font-size: 1.5em; }
+.doc h3 { font-size: 1.22em; }
+.doc h4 { font-size: 1.05em; font-style: italic; font-weight: 500; }
+
+.doc a { color: inherit; text-decoration: underline; text-decoration-thickness: 0.5px; text-underline-offset: 2px; }
+.doc strong { font-weight: 700; }
+.doc em { font-style: italic; }
+.doc ul, .doc ol { margin: 0.6em 0; padding-left: 1.4em; }
+.doc li { margin: 0.15em 0; }
+.doc hr { border: none; text-align: center; margin: 1.2em 0; }
+.doc hr::before { content: "✳"; color: var(--md-on-surface-variant); letter-spacing: 0.4em; }
+
+.doc code { font-family: var(--md-font-mono); font-size: 0.86em; background: rgba(0,0,0,0.05); padding: 0.1em 0.3em; border-radius: 3px; }
+.doc pre { background: rgba(0,0,0,0.05); padding: 0.8em 1em; border-radius: 6px; overflow-x: auto; break-inside: avoid; }
+.doc pre code { background: none; padding: 0; }
+
+/* Block quote */
+.doc blockquote {
+  margin: 1em 0;
+  padding-left: 1em;
+  border-left: 3px solid var(--md-primary);
+  font-style: italic;
+  color: #333;
+}
+
+/* ---- Drop cap ---- */
+.doc.dropcap > .doc-flow > p.lead::first-letter,
+.doc.dropcap > .doc-flow > p:first-of-type::first-letter {
+  font-family: var(--doc-font-display);
+  font-weight: 700;
+  float: left;
+  font-size: 3.2em;
+  line-height: 0.78;
+  padding: 0.06em 0.08em 0 0;
+  color: var(--md-primary);
+}
+
+/* ---- Pull quote ---- */
+.doc .pullquote {
+  font-family: var(--doc-font-display);
+  font-size: 1.45em;
+  line-height: 1.2;
+  font-weight: 500;
+  color: var(--md-primary);
+  text-align: left;
+  hyphens: none;
+  text-indent: 0;
+  margin: 0.8em 0;
+  padding: 0.4em 0 0.4em 0;
+  border-top: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  break-inside: avoid;
+}
+.doc .pullquote.float {
+  float: right;
+  width: 46%;
+  margin: 0.2em 0 0.6em 1.2em;
+}
+
+/* ---- Figures, captions, credits ---- */
+.doc figure { margin: 1em 0; break-inside: avoid; }
+.doc figure img, .doc figure .img-placeholder { width: 100%; display: block; border-radius: 2px; }
+.doc figure .img-placeholder {
+  aspect-ratio: 16 / 9;
+  background: repeating-linear-gradient(45deg, #e6e6e0, #e6e6e0 10px, #deded8 10px, #deded8 20px);
+  display: grid;
+  place-items: center;
+  color: #888;
+  font: 500 12px/1 var(--md-font-plain);
+}
+.doc figcaption {
+  font-family: var(--md-font-plain);
+  font-size: 0.78em;
+  line-height: 1.35;
+  color: #555;
+  margin-top: 0.4em;
+  text-indent: 0;
+}
+.doc figcaption .credit {
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-size: 0.82em;
+  color: #888;
+}
+
+/* ---- Citations & bibliography (academic publishing) ---- */
+.doc .cite { color: var(--md-primary, #06c); text-decoration: none; }
+.doc .cite-missing { color: #b00; background: rgba(200, 0, 0, 0.08); border-radius: 2px; padding: 0 2px; }
+.doc-bibliography { margin-top: 1.6em; break-before: auto; }
+.doc-bibliography .notes-title {
+  font-family: var(--md-font-plain); font-size: 0.78em; font-weight: 700; letter-spacing: 1.5px;
+  text-transform: uppercase; color: #888; border-bottom: 1px solid #ccc; padding-bottom: 0.3em; margin: 0 0 0.7em;
+}
+.doc-bibliography .references { list-style: none; margin: 0; padding: 0; }
+.doc-bibliography .ref-entry {
+  font-size: 0.82em; line-height: 1.45; color: #333; margin: 0 0 0.5em; padding-left: 1.4em;
+  text-indent: -1.4em; text-align: left; hyphens: none;
+}
+
+/* ---- Colophon (book publishing) ---- */
+.colophon {
+  margin-top: 2.4em; padding-top: 1.4em; text-align: center;
+  font-family: var(--md-font-plain); font-size: 0.74em; line-height: 1.7; color: #777;
+  break-before: page;
+}
+.colophon .colophon-mark { font-size: 1.4em; color: #bbb; margin-bottom: 0.6em; }
+.colophon .colo-title { font-family: var(--doc-font-display); font-size: 1.5em; color: #444; margin-bottom: 0.5em; font-style: italic; }
+.colophon .colo-rights { margin-top: 0.5em; font-style: italic; }
+
+/* ---- Footnotes (paged.js moves [data-note] content into page footnote area) ---- */
+.doc .fn { font-size: 0.7em; vertical-align: super; line-height: 0; color: var(--md-primary); }
+.footnote { font-family: var(--md-font-plain); font-size: 8pt; line-height: 1.3; color: #444; }
+
+/* ---- Article masthead (from front-matter) ---- */
+.masthead { margin-bottom: 1.4em; break-after: avoid; }
+.masthead .kicker {
+  font-family: var(--md-font-plain);
+  font-weight: 700;
+  font-size: 0.78em;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--md-primary);
+  margin-bottom: 0.5em;
+}
+.masthead .headline {
+  font-family: var(--doc-font-display);
+  font-weight: 700;
+  font-size: 2.4em;
+  line-height: 1.05;
+  margin: 0 0 0.3em;
+  text-align: left;
+  text-wrap: balance;
+}
+.masthead .deck {
+  font-family: var(--doc-font-display);
+  font-style: italic;
+  font-weight: 400;
+  font-size: 1.2em;
+  line-height: 1.3;
+  color: #444;
+  margin: 0 0 0.7em;
+  text-align: left;
+}
+.masthead .byline {
+  font-family: var(--md-font-plain);
+  font-size: 0.82em;
+  color: #555;
+  border-top: 1px solid #ccc;
+  border-bottom: 1px solid #ccc;
+  padding: 0.5em 0;
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.masthead .byline b { color: #222; font-weight: 600; }
+
+/* ---- Galley grid overlay (columns + baseline + margins) ---- */
+.paper .grid-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 3;
+}
+.paper .grid-overlay .margin-box {
+  position: absolute;
+  top: var(--mt); right: var(--mr); bottom: var(--mb); left: var(--ml);
+  outline: 1px dashed rgba(0, 120, 200, 0.55);
+}
+.paper .grid-overlay .cols {
+  position: absolute;
+  top: var(--mt); right: var(--mr); bottom: var(--mb); left: var(--ml);
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: var(--col-gap, 6mm);
+}
+.paper .grid-overlay .cols i { background: rgba(0, 150, 220, 0.10); }
+.paper .grid-overlay .baseline {
+  position: absolute;
+  top: var(--mt); right: var(--mr); bottom: var(--mb); left: var(--ml);
+  background-image: repeating-linear-gradient(
+    to bottom,
+    rgba(220, 60, 90, 0.25) 0,
+    rgba(220, 60, 90, 0.25) 1px,
+    transparent 1px,
+    transparent var(--baseline-step, 16px)
+  );
+}
+/* golden-ratio guides */
+.paper .grid-overlay .golden::before,
+.paper .grid-overlay .golden::after {
+  content: "";
+  position: absolute;
+  background: rgba(212, 175, 55, 0.55);
+}
+.paper .grid-overlay .golden::before { top: 0; bottom: 0; left: 61.8%; width: 1px; }
+.paper .grid-overlay .golden::after { left: 0; right: 0; top: 61.8%; height: 1px; }
+
+/* bleed + trim indicator (galley) */
+.paper.show-bleed { outline: var(--bleed, 3mm) solid rgba(255, 60, 60, 0.10); outline-offset: 0; }
+
+/* ---- CMYK / print separation simulation ---- */
+.preview-scroll.cmyk-sim .paper { filter: saturate(0.82) contrast(0.96) brightness(0.99); }
+.preview-scroll.cmyk-sim .paper::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 250, 230, 0.06);
+  mix-blend-mode: multiply;
+  pointer-events: none;
+}
+
+/* ============================ paged.js output ============================ */
+.pagedjs_pages { display: flex; flex-direction: column; align-items: center; gap: 28px; }
+.pagedjs_page {
+  background: var(--doc-paper);
+  box-shadow: var(--paper-shadow);
+  border-radius: 2px;
+  margin: 0 !important;
+}
+.pagedjs_page .doc { color: var(--doc-ink); }
+.pagedjs_margin-content { font-family: var(--md-font-plain); font-size: 8pt; color: #777; }
+/* running page number */
+.pagedjs_margin-bottom-center .pagedjs_margin-content::after { color: #777; }
+
+/* ============================ Print ============================ */
+@media print {
+  body * { visibility: hidden; }
+  .preview-scroll, .preview-scroll * { visibility: visible; }
+  .preview-scroll {
+    position: absolute;
+    inset: 0;
+    padding: 0;
+    overflow: visible;
+    background: #fff;
+  }
+  .paper, .pagedjs_page { box-shadow: none; }
+  .grid-overlay { display: none !important; }
+}

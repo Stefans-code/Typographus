@@ -1,0 +1,115 @@
+/* =========================================================================
+   Base reset + MD3 typography scale
+   ========================================================================= */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  font-family: var(--font-ui);
+  font-feature-settings: "cv05" 1, "ss01" 1, "cv11" 1;
+  background: var(--md-background);
+  color: var(--md-on-surface);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow: hidden;
+}
+
+#app {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+button {
+  font-family: inherit;
+}
+
+::selection {
+  background: rgba(var(--md-primary-rgb), 0.32);
+}
+
+/* Material Symbols base */
+.msi {
+  font-family: "Material Symbols Rounded";
+  font-weight: normal;
+  font-style: normal;
+  font-size: 24px;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-flex;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  -webkit-font-feature-settings: "liga";
+  font-feature-settings: "liga";
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24;
+}
+.msi.fill {
+  font-variation-settings: "FILL" 1, "wght" 400, "GRAD" 0, "opsz" 24;
+}
+.msi.sm {
+  font-size: 20px;
+}
+.msi.xs {
+  font-size: 18px;
+}
+
+/* ---- type scale (Inter, premium tracking) ---- */
+.t-display-l { font: 600 40px/46px var(--font-ui); letter-spacing: -0.6px; }
+.t-display-m { font: 600 32px/38px var(--font-ui); letter-spacing: -0.4px; }
+.t-display-s { font: 600 26px/32px var(--font-ui); letter-spacing: -0.3px; }
+.t-headline-l { font: 600 24px/30px var(--font-ui); letter-spacing: -0.3px; }
+.t-headline-m { font: 600 20px/27px var(--font-ui); letter-spacing: -0.2px; }
+.t-headline-s { font: 600 18px/24px var(--font-ui); letter-spacing: -0.15px; }
+.t-title-l { font: 600 17px/24px var(--font-ui); letter-spacing: -0.1px; }
+.t-title-m { font: 550 15px/22px var(--font-ui); letter-spacing: -0.05px; }
+.t-title-s { font: 550 13px/18px var(--font-ui); }
+.t-body-l { font: 400 15px/23px var(--font-ui); }
+.t-body-m { font: 400 13.5px/20px var(--font-ui); }
+.t-body-s { font: 400 12px/16px var(--font-ui); }
+.t-label-l { font: 550 13px/18px var(--font-ui); }
+.t-label-m { font: 550 12px/16px var(--font-ui); letter-spacing: 0.2px; }
+.t-label-s { font: 600 11px/15px var(--font-ui); letter-spacing: 0.4px; }
+
+/* Thin scrollbars consistent with surface tiers */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--md-outline-variant) transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--md-outline-variant);
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--md-outline);
+  background-clip: content-box;
+  border: 3px solid transparent;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}

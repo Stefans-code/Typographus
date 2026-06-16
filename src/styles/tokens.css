@@ -1,0 +1,197 @@
+/* =========================================================================
+   Typographus — design tokens  ·  "Atelier" system
+   A quiet, professional editorial workstation. Neutral graphite chrome,
+   one restrained ink-blue accent, the white sheet is the hero.
+   ========================================================================= */
+
+:root {
+  /* ---- shape ---- */
+  --r-xs: 6px;
+  --r-sm: 9px;
+  --r-md: 12px;
+  --r-lg: 16px;
+  --r-xl: 22px;
+  --r-full: 999px;
+
+  /* ---- motion ---- */
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --ease-out: cubic-bezier(0.05, 0.7, 0.1, 1);
+  --t-fast: 110ms;
+  --t-med: 200ms;
+  --t-slow: 340ms;
+
+  /* ---- type families ---- */
+  --font-ui: "Inter Variable", "Inter", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono Variable", "JetBrains Mono", "Cascadia Code", ui-monospace, monospace;
+  --doc-font-serif: "Source Serif 4 Variable", "Source Serif 4", Georgia, "Times New Roman", serif;
+  --doc-font-display: "Newsreader Variable", "Newsreader", Georgia, serif;
+
+  /* alias kept for legacy component rules */
+  --md-font-plain: var(--font-ui);
+  --md-font-brand: var(--font-ui);
+  --md-font-mono: var(--font-mono);
+
+  /* shape aliases (legacy) */
+  --md-shape-none: 0; --md-shape-xs: var(--r-xs); --md-shape-sm: var(--r-sm);
+  --md-shape-md: var(--r-md); --md-shape-lg: var(--r-lg); --md-shape-xl: var(--r-xl);
+  --md-shape-full: var(--r-full);
+  --md-dur-short: var(--t-fast); --md-dur-medium: var(--t-med); --md-dur-long: var(--t-slow);
+  --md-ease-standard: var(--ease); --md-ease-emphasized: var(--ease-out); --md-ease-decelerate: var(--ease-out);
+
+  --md-state-hover: 0.06;
+  --md-state-focus: 0.10;
+  --md-state-press: 0.12;
+}
+
+/* ============================== DARK (default) ============================== */
+:root,
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* accent — refined ink blue, used sparingly */
+  --accent: #5ea6ff;
+  --accent-strong: #3d8bff;
+  --accent-dim: rgba(94, 166, 255, 0.16);
+  --on-accent: #051a31;
+
+  --md-primary: var(--accent);
+  --md-on-primary: var(--on-accent);
+  --md-primary-container: #143a5e;
+  --md-on-primary-container: #d2e6ff;
+
+  --md-secondary: #b7c0cc;
+  --md-on-secondary: #1c242e;
+  --md-secondary-container: #20262e;
+  --md-on-secondary-container: #dfe6ef;
+
+  --md-tertiary: #c9b8e8;
+  --md-on-tertiary: #2a2342;
+  --md-tertiary-container: #2f2942;
+  --md-on-tertiary-container: #e7ddff;
+
+  --md-error: #ff6b66;
+  --md-on-error: #2b0303;
+  --md-error-container: #4a1513;
+  --md-on-error-container: #ffd9d6;
+  --ok: #54d08a;
+  --warn: #f2c14e;
+
+  /* neutral graphite ramp (very slightly cool, NOT navy) */
+  --md-background: #0d0d0f;
+  --md-on-background: #e8e8ea;
+  --md-surface: #0d0d0f;
+  --md-on-surface: #e9e9ec;
+  --md-surface-variant: #26262a;
+  --md-on-surface-variant: #9a9aa1;
+
+  --md-surface-container-lowest: #090909;
+  --md-surface-container-low: #131316;
+  --md-surface-container: #171719;
+  --md-surface-container-high: #1d1d20;
+  --md-surface-container-highest: #242428;
+
+  --md-surface-dim: #0d0d0f;
+  --md-surface-bright: #2a2a2e;
+
+  --md-outline: #3a3a40;
+  --md-outline-variant: #232327;
+  --hairline: rgba(255, 255, 255, 0.07);
+  --hairline-strong: rgba(255, 255, 255, 0.12);
+
+  --md-inverse-surface: #e9e9ec;
+  --md-inverse-on-surface: #1c1c1f;
+  --md-inverse-primary: #2f6fd0;
+
+  --md-scrim: #000;
+
+  --md-primary-rgb: 94, 166, 255;
+  --md-on-surface-rgb: 233, 233, 236;
+
+  /* document workspace */
+  --doc-canvas: #08080a;
+  --doc-canvas-dot: rgba(255, 255, 255, 0.035);
+  --doc-paper: #fbfbf8;
+  --doc-ink: #18181a;
+  --paper-shadow: 0 1px 1px rgba(0,0,0,.5), 0 18px 50px -12px rgba(0,0,0,.7), 0 4px 14px rgba(0,0,0,.4);
+
+  --titlebar: #0a0a0c;
+}
+
+/* ============================== LIGHT ============================== */
+[data-theme="light"] {
+  color-scheme: light;
+
+  --accent: #1668e3;
+  --accent-strong: #0f57c7;
+  --accent-dim: rgba(22, 104, 227, 0.12);
+  --on-accent: #ffffff;
+
+  --md-primary: var(--accent);
+  --md-on-primary: #ffffff;
+  --md-primary-container: #d7e6ff;
+  --md-on-primary-container: #04274f;
+
+  --md-secondary: #4d5660;
+  --md-on-secondary: #ffffff;
+  --md-secondary-container: #e6eaef;
+  --md-on-secondary-container: #1b232c;
+
+  --md-tertiary: #5d4f86;
+  --md-on-tertiary: #ffffff;
+  --md-tertiary-container: #e9e0ff;
+  --md-on-tertiary-container: #1c1340;
+
+  --md-error: #c5302a;
+  --md-on-error: #ffffff;
+  --md-error-container: #ffdad6;
+  --md-on-error-container: #410100;
+  --ok: #2e8b57;
+  --warn: #9a6700;
+
+  --md-background: #eceae6;
+  --md-on-background: #1c1b19;
+  --md-surface: #faf9f6;
+  --md-on-surface: #1c1b19;
+  --md-surface-variant: #e4e2dd;
+  --md-on-surface-variant: #57564f;
+
+  --md-surface-container-lowest: #ffffff;
+  --md-surface-container-low: #f6f5f1;
+  --md-surface-container: #f1f0ec;
+  --md-surface-container-high: #eae8e3;
+  --md-surface-container-highest: #e3e1db;
+
+  --md-surface-dim: #dcdad4;
+  --md-surface-bright: #faf9f6;
+
+  --md-outline: #bcbab2;
+  --md-outline-variant: #dedcd5;
+  --hairline: rgba(0, 0, 0, 0.09);
+  --hairline-strong: rgba(0, 0, 0, 0.14);
+
+  --md-inverse-surface: #313029;
+  --md-inverse-on-surface: #f3f1ea;
+  --md-inverse-primary: #5ea6ff;
+
+  --md-scrim: #000;
+
+  --md-primary-rgb: 22, 104, 227;
+  --md-on-surface-rgb: 28, 27, 25;
+
+  --doc-canvas: #9c9a94;
+  --doc-canvas-dot: rgba(0, 0, 0, 0.05);
+  --doc-paper: #ffffff;
+  --doc-ink: #1a1a1a;
+  --paper-shadow: 0 1px 2px rgba(0,0,0,.18), 0 16px 40px -14px rgba(0,0,0,.42);
+
+  --titlebar: #f1f0ec;
+}
+
+/* elevation (kept subtle) */
+:root {
+  --md-elevation-1: 0 1px 2px rgba(0,0,0,.28);
+  --md-elevation-2: 0 2px 6px rgba(0,0,0,.3);
+  --md-elevation-3: 0 6px 18px -6px rgba(0,0,0,.45);
+  --md-elevation-4: 0 12px 30px -10px rgba(0,0,0,.5);
+  --md-elevation-5: 0 22px 50px -14px rgba(0,0,0,.55);
+}
