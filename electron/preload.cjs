@@ -10,5 +10,6 @@ contextBridge.exposeInMainWorld("typographus", {
     status: () => ipcRenderer.invoke("license:status"),
     hwid: () => ipcRenderer.invoke("license:hwid"),
     activate: (token) => ipcRenderer.invoke("license:activate", token),
+    deactivate: () => ipcRenderer.invoke("license:deactivate"),
   },
 });

@@ -69,6 +69,7 @@ interface DesktopBridge {
     status(): Promise<LicenseStatus>;
     hwid(): Promise<string>;
     activate(token: string): Promise<LicenseStatus>;
+    deactivate(): Promise<LicenseStatus>;
   };
 }
 const desktop: DesktopBridge | undefined = (window as unknown as { typographus?: DesktopBridge }).typographus;
@@ -88,6 +89,7 @@ class App {
   store: Store;
   prefs: AppPrefs;
   screen: Screen = "home";
+  settingsCat = "aspetto";
   tool: RailTool = "document";
   view: ViewMode = "galley";
   zoom = 0.62;
@@ -1510,14 +1512,39 @@ class App {
 
   /* ============================ SETTINGS ============================ */
   settingsScreen(): string {
-    const p = this.prefs;
+    const cats: [string, string, string][] = [
+      ["aspetto", "palette", "Aspetto"],
+      ["editor", "edit_note", "Editor"],
+      ["lingua", "translate", "Lingua"],
+      ["nuovi", "note_add", "Nuovi documenti"],
+      ["licenza", "verified_user", "Licenza"],
+      ["info", "info", "Informazioni"],
+    ];
     return `
     <div class="settings">
       <div class="settings-inner">
         <button class="btn btn--text settings-back" id="setBack">${icon("arrow_back")}Indietro</button>
         <h1 class="settings-title">Impostazioni</h1>
+        <div class="settings-layout">
+          <nav class="settings-nav" id="setNav">
+            ${cats
+              .map(
+                ([id, ic, label]) =>
+                  `<button class="set-nav-item ${id === this.settingsCat ? "is-active" : ""}" data-cat="${id}">${icon(ic, "sm")}<span>${label}</span></button>`
+              )
+              .join("")}
+          </nav>
+          <div class="settings-content" id="setContent"></div>
+        </div>
+      </div>
+    </div>`;
+  }
 
-        <div class="set-card">
+  settingsCatHtml(): string {
+    const p = this.prefs;
+    switch (this.settingsCat) {
+      case "aspetto":
+        return `<div class="set-card">
           <h3>${icon("palette", "sm")} Aspetto</h3>
           <div class="opt-row"><div class="opt-label"><b>Tema</b><span>Chiaro o scuro</span></div>
             ${segmented("setTheme", [["light", "Chiaro", "light_mode"], ["dark", "Scuro", "dark_mode"]], p.theme)}</div>
@@ -1532,53 +1559,44 @@ class App {
             </div></div>
           <div class="opt-row"><div class="opt-label"><b>Densità</b><span>Spaziatura dell'interfaccia</span></div>
             ${segmented("setDensity", [["cozy", "Comoda"], ["compact", "Compatta"]], p.density)}</div>
-        </div>
-
-        <div class="set-card">
+        </div>`;
+      case "editor":
+        return `<div class="set-card">
           <h3>${icon("edit_note", "sm")} Editor</h3>
           ${sliderRow("Dimensione font sorgente", "setEdSize", 11, 18, 0.5, p.editorFontSize, " px")}
           <div class="opt-row"><div class="opt-label"><b>A capo automatico</b><span>Manda a capo le righe lunghe</span></div>
             <label class="switch"><input type="checkbox" id="setWrap" ${p.wordWrap ? "checked" : ""}><span class="track"><span class="thumb"></span></span></label></div>
-        </div>
-
-        <div class="set-card">
+        </div>`;
+      case "lingua":
+        return `<div class="set-card">
           <h3>${icon("translate", "sm")} Lingua e leggibilità</h3>
           <div class="opt-row"><div class="opt-label"><b>Lingua del testo</b><span>Indici di leggibilità e sillabazione</span></div>
             ${segmented("setLang", [["it", "Italiano"], ["en", "English"]], p.language)}</div>
-        </div>
-
-        <div class="set-card">
+        </div>`;
+      case "nuovi":
+        return `<div class="set-card">
           <h3>${icon("note_add", "sm")} Nuovi documenti</h3>
           <p class="help" style="margin:0 0 14px">Valori predefiniti applicati ai documenti creati da zero.</p>
-          ${fieldSelect(
-            "Formato pagina",
-            "setDefPage",
-            [
-              ["A3", "A3"],
-              ["A4", "A4"],
-              ["A5", "A5"],
-              ["Letter", "US Letter"],
-              ["Tabloid", "Tabloid"],
-            ],
-            p.defPageSize
-          )}
+          ${fieldSelect("Formato pagina", "setDefPage", [["A3", "A3"], ["A4", "A4"], ["A5", "A5"], ["Letter", "US Letter"], ["Tabloid", "Tabloid"]], p.defPageSize)}
           ${sliderRow("Corpo del testo", "setDefBody", 8, 14, 0.25, p.defBodySize, " pt")}
           ${sliderRow("Interlinea", "setDefLead", 1.0, 2.0, 0.05, p.defLeading, "×")}
-        </div>
-
-        <div class="set-card">
-          <h3>${icon("info", "sm")} Informazioni</h3>
-          <div class="about-grid">
-            <div><span>Versione</span><b>Typographus ${COMPANY.version}</b></div>
-            <div><span>Runtime</span><b>Electron · Vite · TypeScript</b></div>
-            <div><span>Impaginazione</span><b>Paged.js</b></div>
-            <div><span>Conversione</span><b>marked · mammoth · JSZip</b></div>
+        </div>`;
+      case "licenza":
+        return `<div class="set-card">
+          <h3>${icon("vpn_key", "sm")} Stato licenza</h3>
+          <div id="licStatus"><p class="help">Verifica in corso…</p></div>
+          <label class="lg-label" style="margin-top:14px">Chiave di licenza</label>
+          <textarea id="setLicKey" rows="3" spellcheck="false" placeholder="Incolla qui la chiave di licenza…"></textarea>
+          <div class="lic-actions">
+            <button class="btn btn--filled btn--sm" id="setLicActivate">${icon("key", "sm")}Attiva / Aggiorna</button>
+            <button class="btn btn--tonal btn--sm" id="setLicLoad">${icon("folder_open", "sm")}Carica da file</button>
+            <button class="btn btn--outlined btn--sm" id="setLicDeact">${icon("link_off", "sm")}Disattiva</button>
           </div>
-          <p class="help" style="margin-bottom:14px">Tutti i documenti e le preferenze sono salvati localmente sul tuo dispositivo.</p>
+          <div class="lg-msg" id="setLicMsg"></div>
+          <p class="help">Attivazione <b>offline</b> legata a questo dispositivo (HWID).</p>
         </div>
-
         <div class="set-card legal-card">
-          <h3>${icon("verified_user", "sm")} Licenza e produttore</h3>
+          <h3>${icon("local_fire_department", "sm")} Produttore</h3>
           <div class="vendor">
             <div class="vendor-logo">${icon("local_fire_department")}</div>
             <div class="vendor-meta">
@@ -1588,17 +1606,34 @@ class App {
               <span>${COMPANY.email}</span>
             </div>
           </div>
-          <div class="about-grid" style="margin-top:14px">
-            <div><span>Prodotto</span><b>Typographus — Editorial Engine</b></div>
-            <div><span>Licenza</span><b>Proprietaria (EULA)</b></div>
-          </div>
-          <div style="display:flex;gap:8px;margin-top:6px">
+          <div style="display:flex;gap:8px;margin-top:14px">
             <button class="btn btn--tonal btn--sm" id="openLicense">${icon("description", "sm")}Leggi la licenza (EULA)</button>
           </div>
-          <p class="help">${COPYRIGHT} — Tutti i diritti riservati. Software proprietario distribuito da Nexflamma.</p>
-        </div>
-      </div>
-    </div>`;
+          <p class="help">${COPYRIGHT} — Software proprietario. Tutti i diritti riservati.</p>
+        </div>`;
+      case "info":
+      default:
+        return `<div class="set-card">
+          <h3>${icon("info", "sm")} Informazioni</h3>
+          <div class="about-grid">
+            <div><span>Prodotto</span><b>Typographus — Editorial Engine</b></div>
+            <div><span>Versione</span><b>${COMPANY.version}</b></div>
+            <div><span>Runtime</span><b>Electron · Vite · TS</b></div>
+            <div><span>Impaginazione</span><b>Paged.js</b></div>
+            <div><span>Conversione</span><b>marked · mammoth · JSZip</b></div>
+            <div><span>Licenza</span><b>Proprietaria (EULA)</b></div>
+          </div>
+          <p class="help">Tutti i documenti e le preferenze sono salvati localmente sul tuo dispositivo. ${COPYRIGHT}.</p>
+        </div>`;
+    }
+  }
+
+  renderSettingsCat() {
+    const host = document.getElementById("setContent");
+    if (!host) return;
+    host.innerHTML = this.settingsCatHtml();
+    this.bindSettingsControls();
+    if (this.settingsCat === "licenza") this.refreshLicensePanel();
   }
 
   openLicense() {
@@ -1640,8 +1675,19 @@ class App {
 
   bindSettings() {
     byId("setBack").onclick = () => this.goScreen("home");
-    byId("openLicense").onclick = () => this.openLicense();
+    this.screenRoot.querySelectorAll<HTMLElement>(".set-nav-item").forEach((b) => {
+      b.onclick = () => {
+        this.settingsCat = b.dataset.cat!;
+        this.screenRoot.querySelectorAll(".set-nav-item").forEach((x) =>
+          x.classList.toggle("is-active", x === b)
+        );
+        this.renderSettingsCat();
+      };
+    });
+    this.renderSettingsCat();
+  }
 
+  bindSettingsControls() {
     bindSegmented("setTheme", (v) => {
       this.prefs.theme = v as AppPrefs["theme"];
       this.commitPrefs();
@@ -1682,6 +1728,95 @@ class App {
       this.prefs.defLeading = n;
       this.commitPrefs(false);
     }, "×");
+
+    const openLic = document.getElementById("openLicense");
+    if (openLic) openLic.onclick = () => this.openLicense();
+    this.bindLicenseControls();
+  }
+
+  bindLicenseControls() {
+    const activate = document.getElementById("setLicActivate");
+    if (!activate) return; // not the license category
+    const msg = byId("setLicMsg");
+    const keyEl = byId<HTMLTextAreaElement>("setLicKey");
+
+    if (!desktop?.license) {
+      msg.textContent = "La gestione licenza è disponibile solo nell'app desktop.";
+      msg.className = "lg-msg";
+      activate.setAttribute("disabled", "true");
+      byId("setLicDeact").setAttribute("disabled", "true");
+      byId("setLicLoad").setAttribute("disabled", "true");
+      return;
+    }
+
+    activate.onclick = async () => {
+      const token = keyEl.value.trim();
+      if (!token) {
+        msg.textContent = "Inserisci una chiave di licenza.";
+        msg.className = "lg-msg err";
+        return;
+      }
+      const res = await desktop.license!.activate(token);
+      msg.textContent = res.valid ? "Licenza attivata correttamente." : res.message;
+      msg.className = res.valid ? "lg-msg ok" : "lg-msg err";
+      if (res.valid) keyEl.value = "";
+      this.refreshLicensePanel();
+    };
+
+    byId("setLicDeact").onclick = async () => {
+      await desktop.license!.deactivate();
+      msg.textContent = "Licenza disattivata su questo dispositivo.";
+      msg.className = "lg-msg";
+      this.refreshLicensePanel();
+    };
+
+    byId("setLicLoad").onclick = () => {
+      const inp = document.createElement("input");
+      inp.type = "file";
+      inp.accept = ".typographus,.txt,.key,.jwt";
+      inp.onchange = async () => {
+        const f = inp.files?.[0];
+        if (!f) return;
+        keyEl.value = (await f.text()).trim();
+        msg.textContent = "Chiave caricata dal file: premi “Attiva / Aggiorna”.";
+        msg.className = "lg-msg";
+      };
+      inp.click();
+    };
+  }
+
+  async refreshLicensePanel() {
+    const host = document.getElementById("licStatus");
+    if (!host) return;
+    if (!desktop?.license) {
+      host.innerHTML = `<div class="lic-stat"><span class="status-chip" data-status="draft">Demo</span><div class="lic-stat-meta"><b>Anteprima nel browser</b><span>Apri l'app desktop per attivare una licenza.</span></div></div>`;
+      return;
+    }
+    const st = await desktop.license.status();
+    const cls = st.valid ? "published" : st.message.includes("scaduta") ? "review" : "draft";
+    const label = st.valid ? "Attiva" : st.message.includes("scaduta") ? "Scaduta" : "Non attiva";
+    host.innerHTML = `
+      <div class="lic-stat">
+        <span class="status-chip" data-status="${cls}">${label}</span>
+        <div class="lic-stat-meta">
+          <b>${escapeHtml(st.message)}</b>
+          ${st.plan ? `<span>Piano: ${escapeHtml(st.plan)}</span>` : ""}
+        </div>
+      </div>
+      <div class="lg-hwid" style="margin-top:12px">
+        <div><span>ID dispositivo (HWID)</span><b>${escapeHtml(st.hwid || "—")}</b></div>
+        <button class="btn btn--text btn--sm" id="setCopyHwid">${icon("content_copy", "sm")}Copia</button>
+      </div>`;
+    const copy = document.getElementById("setCopyHwid");
+    if (copy)
+      copy.onclick = async () => {
+        try {
+          await navigator.clipboard.writeText(st.hwid);
+          snackbar("HWID copiato.");
+        } catch {
+          /* ignore */
+        }
+      };
   }
 
   commitPrefs(reapply = true) {

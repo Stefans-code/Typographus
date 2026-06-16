@@ -64,6 +64,10 @@ app.on("window-all-closed", () => {
 ipcMain.handle("license:status", () => license.status());
 ipcMain.handle("license:hwid", () => license.getHWID());
 ipcMain.handle("license:activate", (_e, token) => license.activate(token));
+ipcMain.handle("license:deactivate", () => {
+  license.removeToken();
+  return license.status();
+});
 
 /* window controls from the renderer titlebar */
 ipcMain.on("win:minimize", () => win && win.minimize());
