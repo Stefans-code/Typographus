@@ -4,3 +4,16 @@ release
 *.log
 .DS_Store
 .vite
+
+# Python desktop shell
+venv/
+__pycache__/
+*.pyc
+*.spec
+
+# compiled web UI bundle (built by `npm run build`, embedded at package time)
+webui/
+
+# PyInstaller output
+build_out/
+build_tmp/

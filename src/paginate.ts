@@ -21,8 +21,67 @@ export function docClass(s: Settings): string {
   return "doc" + (s.dropcap ? " dropcap" : "");
 }
 
+/* NOTE: single quotes only — these stacks are injected into double-quoted
+   style="..." attributes, so a double quote here would break the attribute. */
+export const FONT_STACKS: Record<string, string> = {
+  serif: "'Source Serif 4 Variable','Source Serif 4',Georgia,serif",
+  display: "'Newsreader Variable','Newsreader',Georgia,serif",
+  sans: "'Inter Variable','Inter','Segoe UI',sans-serif",
+  mono: "'JetBrains Mono Variable',ui-monospace,monospace",
+  georgia: "Georgia,'Times New Roman',serif",
+  times: "'Times New Roman',Times,serif",
+  garamond: "'EB Garamond',Garamond,'Times New Roman',serif",
+  palatino: "'Palatino Linotype',Palatino,'Book Antiqua',serif",
+  bookantiqua: "'Book Antiqua',Palatino,serif",
+  cambria: "Cambria,Georgia,serif",
+  calibri: "Calibri,'Segoe UI',sans-serif",
+  arial: "Arial,Helvetica,sans-serif",
+  helvetica: "Helvetica,Arial,sans-serif",
+  verdana: "Verdana,Geneva,sans-serif",
+  tahoma: "Tahoma,Geneva,sans-serif",
+  trebuchet: "'Trebuchet MS',Helvetica,sans-serif",
+  segoe: "'Segoe UI',system-ui,sans-serif",
+  courier: "'Courier New',Courier,monospace",
+  consolas: "Consolas,'JetBrains Mono Variable',monospace",
+};
+
+/* Shared list for the font pickers (key, label). */
+export const FONT_OPTIONS: [string, string][] = [
+  ["serif", "Source Serif — editoriale"],
+  ["display", "Newsreader — display"],
+  ["sans", "Inter — sans"],
+  ["georgia", "Georgia"],
+  ["times", "Times New Roman"],
+  ["garamond", "Garamond"],
+  ["palatino", "Palatino"],
+  ["bookantiqua", "Book Antiqua"],
+  ["cambria", "Cambria"],
+  ["calibri", "Calibri"],
+  ["segoe", "Segoe UI"],
+  ["arial", "Arial"],
+  ["helvetica", "Helvetica"],
+  ["verdana", "Verdana"],
+  ["tahoma", "Tahoma"],
+  ["trebuchet", "Trebuchet MS"],
+  ["courier", "Courier New"],
+  ["consolas", "Consolas / mono"],
+];
+
+const fontStack = (key: string) => FONT_STACKS[key] || FONT_STACKS.serif;
+
 export function docStyleVars(s: Settings): string {
+  const masthead = [
+    s.headlineFont ? `--headline-font:${fontStack(s.headlineFont)}` : "",
+    s.headlineColor ? `--headline-color:${s.headlineColor}` : "",
+    s.kickerFont ? `--kicker-font:${fontStack(s.kickerFont)}` : "",
+    s.kickerColor ? `--kicker-color:${s.kickerColor}` : "",
+    s.deckFont ? `--deck-font:${fontStack(s.deckFont)}` : "",
+    s.deckColor ? `--deck-color:${s.deckColor}` : "",
+  ].filter(Boolean);
   return [
+    `--doc-font-serif:${fontStack(s.bodyFont)}`,
+    `--doc-font-display:${fontStack(s.headingFont)}`,
+    `--doc-ink:${s.textColor || "#18181a"}`,
     `--body-size:${s.bodySize}pt`,
     `--leading:${s.leading}`,
     `--text-align:${s.align}`,
@@ -35,6 +94,7 @@ export function docStyleVars(s: Settings): string {
     `--cols:${s.columns}`,
     `--col-gap:${s.columnGap}mm`,
     `--col-rule:${s.columnRule ? "1px solid #ccc" : "none"}`,
+    ...masthead,
   ].join(";");
 }
 
@@ -98,6 +158,7 @@ export function pageCss(state: DocState): string {
       ${runHead}
     }
     @page :first { @top-center { content: none; } }
+    .pagedjs_page { ${docStyleVars(s)} }
     .pagedjs_page .doc { ${docStyleVars(s)} }
   `;
 }

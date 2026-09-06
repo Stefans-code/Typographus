@@ -150,6 +150,73 @@ export function detectAI(text: string, lang: Lang = "it"): AiResult {
   return { aiScore, humanScore, verdict, signals, words: wc, reliable: true };
 }
 
+/* ======================= ORIGINALITY / DUPLICATE CHECK =======================
+   Confronto di originalità interamente locale: nessuna rete, nessun indice
+   web di terzi. Confronta il documento corrente con la libreria salvata
+   sull'stesso dispositivo (o con un testo di riferimento incollato) usando
+   "shingling" a k-grammi di parole + similarità di Jaccard — una tecnica
+   di dominio pubblico usata da decenni nella letteratura sul rilevamento di
+   testo duplicato, qui implementata da zero.
+   ========================================================================= */
+export interface OriginalityMatch {
+  id: string;
+  title: string;
+  similarity: number; // 0..100: quota di frammenti di ~8 parole in comune
+  samples: string[]; // alcuni frammenti coincidenti, come prova concreta
+}
+export interface OriginalityReport {
+  originality: number; // 100 - la similarità più alta trovata (0..100)
+  matches: OriginalityMatch[];
+  comparedAgainst: number;
+  reliable: boolean;
+}
+
+const SHINGLE_SIZE = 8;
+
+function shingles(text: string, k = SHINGLE_SIZE): Set<string> {
+  const words = wordsOf(text);
+  const set = new Set<string>();
+  for (let i = 0; i + k <= words.length; i++) set.add(words.slice(i, i + k).join(" "));
+  return set;
+}
+
+function jaccard(a: Set<string>, b: Set<string>): number {
+  if (!a.size || !b.size) return 0;
+  let inter = 0;
+  for (const s of a) if (b.has(s)) inter++;
+  const union = a.size + b.size - inter;
+  return union ? inter / union : 0;
+}
+
+/** Confronta `text` con ogni voce di `corpus` (altri documenti, o un singolo
+ *  testo di riferimento incollato). Tutto locale: nessun testo lascia mai il
+ *  dispositivo. */
+export function checkOriginality(text: string, corpus: { id: string; title: string; text: string }[]): OriginalityReport {
+  const wc = wordsOf(text).length;
+  if (wc < SHINGLE_SIZE * 3) {
+    return { originality: 100, matches: [], comparedAgainst: corpus.length, reliable: false };
+  }
+  const mine = shingles(text);
+  const matches: OriginalityMatch[] = [];
+  for (const doc of corpus) {
+    if (!doc.text.trim()) continue;
+    const theirs = shingles(doc.text);
+    const sim = jaccard(mine, theirs);
+    if (sim <= 0.015) continue;
+    const samples: string[] = [];
+    for (const s of mine) {
+      if (theirs.has(s)) {
+        samples.push(s);
+        if (samples.length >= 3) break;
+      }
+    }
+    matches.push({ id: doc.id, title: doc.title, similarity: Math.round(clamp(sim * 100)), samples });
+  }
+  matches.sort((a, b) => b.similarity - a.similarity);
+  const originality = matches.length ? clamp(100 - matches[0].similarity) : 100;
+  return { originality: Math.round(originality), matches, comparedAgainst: corpus.length, reliable: true };
+}
+
 /* ============================ REWRITER ============================ */
 export type RewriteMode = "humanize" | "simplify" | "formal";
 

@@ -10,48 +10,95 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # ---------- macOS: Apple Silicon (arm64) + Intel (x64) ----------
-  macos:
-    runs-on: macos-14
-    timeout-minutes: 40
+  # ---------- shared: build the embedded web UI once, reused by all OSes ----------
+  webui:
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
           cache: "npm"
-      - name: Install
-        run: npm ci
-      - name: Build web bundle
-        run: npm run build
-      - name: Package DMG (arm64 + x64)
-        run: npx electron-builder --mac --arm64 --x64 --publish never
-        env:
-          CSC_IDENTITY_AUTO_DISCOVERY: "false" # unsigned build (no Apple cert in CI)
-      - name: Upload macOS DMGs
-        uses: actions/upload-artifact@v4
+      - run: npm ci
+      - run: npm run build
+      - uses: actions/upload-artifact@v4
         with:
-          name: Typographus-macOS
-          path: release/*.dmg
+          name: webui-bundle
+          path: webui/
 
   # ---------- Windows: NSIS installer (x64) ----------
   windows:
+    needs: webui
     runs-on: windows-latest
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/download-artifact@v4
         with:
-          node-version: "20"
-          cache: "npm"
-      - name: Install
-        run: npm ci
-      - name: Build web bundle
-        run: npm run build
-      - name: Package installer
-        run: npx electron-builder --win --publish never
+          name: webui-bundle
+          path: webui
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Build
+        run: build_windows.bat
+        shell: cmd
       - name: Upload Windows installer
         uses: actions/upload-artifact@v4
         with:
           name: Typographus-Windows
-          path: release/*.exe
+          path: |
+            build_out/TypographusSetup.exe
+            build_out/Typographus/**
+
+  # ---------- macOS: universal-ish DMG (arm64 native runner) ----------
+  macos:
+    needs: webui
+    runs-on: macos-14
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: webui-bundle
+          path: webui
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Build
+        run: |
+          chmod +x build_mac.sh
+          ./build_mac.sh
+      - name: Upload macOS installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: Typographus-macOS
+          path: build_out/Typographus.dmg
+
+  # ---------- Linux: universal AppImage (x86_64) ----------
+  linux:
+    needs: webui
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: webui-bundle
+          path: webui
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: System dependencies (Qt runtime + AppImage/FUSE)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgl1 libegl1 libxkbcommon0 libfuse2 libxcb-cursor0
+      - name: Build
+        run: |
+          chmod +x build_linux.sh
+          ./build_linux.sh
+      - name: Upload Linux installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: Typographus-Linux
+          path: build_out/Typographus-x86_64.AppImage

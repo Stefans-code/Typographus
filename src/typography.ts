@@ -6,6 +6,7 @@
 
 import { marked } from "marked";
 import type { EditorialMeta, FrontMatter, Reference, Settings } from "./state";
+import { FONT_STACKS } from "./paginate";
 
 marked.setOptions({ gfm: true, breaks: false });
 
@@ -93,6 +94,35 @@ export function compile(
     return `<a class="cite" href="#ref-${esc(k)}">(${esc(who)}${ref.year ? " " + esc(ref.year) : ""})</a>`;
   });
 
+  /* 2.8 Inline styling: [text]{color: val; font: val; bg: val; size: val; decoration: val; weight: val; style: val} */
+  src = src.replace(/\[([^\]]+)\]\{([^\}]+)\}/g, (_m, text, styleStr) => {
+    const styles = styleStr.split(";").map((s) => s.trim()).filter(Boolean);
+    let cssStyle = "";
+    for (const style of styles) {
+      const parts = style.split(":");
+      if (parts.length < 2) continue;
+      const key = parts[0].trim().toLowerCase();
+      const val = parts.slice(1).join(":").trim();
+      if (key === "color") {
+        cssStyle += `color:${val};`;
+      } else if (key === "font" || key === "font-family") {
+        const stack = FONT_STACKS[val] || val;
+        cssStyle += `font-family:${stack};`;
+      } else if (key === "bg" || key === "background" || key === "background-color") {
+        cssStyle += `background-color:${val};`;
+      } else if (key === "size" || key === "font-size") {
+        cssStyle += `font-size:${val};`;
+      } else if (key === "decoration" || key === "text-decoration") {
+        cssStyle += `text-decoration:${val};`;
+      } else if (key === "weight" || key === "font-weight") {
+        cssStyle += `font-weight:${val};`;
+      } else if (key === "style" || key === "font-style") {
+        cssStyle += `font-style:${val};`;
+      }
+    }
+    return `<span style="${cssStyle}">${text}</span>`;
+  });
+
   /* 3. Pull-quote fences :::pullquote ... ::: */
   src = src.replace(/^:::pullquote\s*\n([\s\S]*?)\n:::\s*$/gm, (_m, inner) => {
     const html = marked.parseInline(String(inner).trim()) as string;
@@ -147,6 +177,13 @@ export function compile(
 
   /* 5c. Smart typography */
   if (settings.smart) applySmartToDom(root);
+
+  /* 5d. Make block elements editable for on-page preview editing */
+  root.querySelectorAll("p, h2, h3, h4, li, blockquote").forEach((el) => {
+    el.setAttribute("contenteditable", "true");
+    el.setAttribute("data-body-block", "true");
+    el.setAttribute("spellcheck", "false");
+  });
 
   /* 6. Footnotes block */
   let footnotesHtml = "";
@@ -220,21 +257,20 @@ function buildColophon(meta: EditorialMeta, front: FrontMatter, settings: Settin
 
 function buildMasthead(front: FrontMatter, settings: Settings): string {
   const sm = (s: string) => (settings.smart ? smartTypography(s) : s);
-  const has = (s: string) => s && s.trim().length > 0;
-  if (!has(front.kicker) && !has(front.headline) && !has(front.deck) && !has(front.author)) return "";
+  const kicker = front.kicker || "Occhiello";
+  const headline = front.headline || "Titolo principale";
+  const deck = front.deck || "Sommario dell'articolo";
+  const author = front.author || "Nome dell'autore";
+  
   return `
   <header class="masthead">
-    ${has(front.kicker) ? `<div class="kicker">${esc(front.kicker)}</div>` : ""}
-    ${has(front.headline) ? `<h1 class="headline">${esc(sm(front.headline))}</h1>` : ""}
-    ${has(front.deck) ? `<p class="deck">${esc(sm(front.deck))}</p>` : ""}
-    ${
-      has(front.author) || has(front.dateline)
-        ? `<div class="byline">
-            ${has(front.author) ? `<span><b>${esc(front.author)}</b></span>` : ""}
-            ${has(front.dateline) ? `<span>${esc(front.dateline)}</span>` : ""}
-          </div>`
-        : ""
-    }
+    <div class="kicker ${!front.kicker ? "is-empty" : ""}" contenteditable="true" data-field="kicker" spellcheck="false">${esc(kicker)}</div>
+    <h1 class="headline ${!front.headline ? "is-empty" : ""}" contenteditable="true" data-field="headline" spellcheck="false">${esc(sm(headline))}</h1>
+    <p class="deck ${!front.deck ? "is-empty" : ""}" contenteditable="true" data-field="deck" spellcheck="false">${esc(sm(deck))}</p>
+    <div class="byline">
+      <span><b class="${!front.author ? "is-empty" : ""}" contenteditable="true" data-field="author" spellcheck="false">${esc(author)}</b></span>
+      ${front.dateline ? `<span>${esc(front.dateline)}</span>` : `<span>${esc(new Date().toLocaleDateString("it"))}</span>`}
+    </div>
   </header>`;
 }
 

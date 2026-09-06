@@ -2,6 +2,8 @@
    Typographus — application controller.
    ========================================================================= */
 
+import BRAND_ICON from "../icon.png";
+import { supabase } from "./supabase";
 import {
   ACCENTS,
   Store,
@@ -28,15 +30,16 @@ import {
   type ViewMode,
 } from "./state";
 import { SAMPLE_FRONT, SAMPLE_MD, SAMPLE_TITLE } from "./sample";
-import { TEMPLATES, type Template } from "./templates";
+import { TEMPLATES, type Template, getCommunityTemplates, saveCommunityTemplate, deleteCommunityTemplate, type CommunityTemplate } from "./templates";
 import { COMPANY, COPYRIGHT, EULA_SECTIONS } from "./legal";
 import { compile, toPlainText } from "./typography";
-import { detectAI, rewrite, type RewriteMode } from "./aitools";
+import { checkOriginality, detectAI, rewrite, type RewriteMode } from "./aitools";
+import { paraphrase } from "./paraphraser";
 import { analyze, estimateExtent, type Analysis } from "./metrics";
 import { lint } from "./linter";
 import { importFile } from "./importers";
 import { buildStandaloneHtml, buildToc, downloadBlob, exportEpub, printDocument } from "./exporters";
-import { pageDims, renderGalley, renderPaged } from "./paginate";
+import { FONT_OPTIONS, FONT_STACKS, pageDims, renderGalley, renderPaged } from "./paginate";
 import {
   debounce,
   escapeHtml,
@@ -52,7 +55,6 @@ import {
 } from "./ui";
 
 const MM_TO_PX = 96 / 25.4;
-const BRAND_ICON = import.meta.env.BASE_URL + "icon.png";
 
 interface LicenseStatus {
   valid: boolean;
@@ -78,7 +80,7 @@ const IS_ELECTRON = !!desktop;
 const RAIL: { id: RailTool; icon: string; label: string }[] = [
   { id: "document", icon: "article", label: "Documento" },
   { id: "layout", icon: "grid_on", label: "Layout" },
-  { id: "typography", icon: "match_case", label: "Tipografia" },
+  { id: "typography", icon: "text_fields", label: "Tipografia" },
   { id: "editoria", icon: "auto_stories", label: "Editoria" },
   { id: "review", icon: "fact_check", label: "Revisione" },
   { id: "ai", icon: "smart_toy", label: "AI" },
@@ -89,13 +91,25 @@ class App {
   store: Store;
   prefs: AppPrefs;
   screen: Screen = "home";
+  homeTab: string = "registi";
+  lastSelection = { start: 0, end: 0 };
+  originalBlockText = "";
+  facing = false;
+  undoStack: string[] = [];
+  redoStack: string[] = [];
   settingsCat = "aspetto";
   tool: RailTool = "document";
   view: ViewMode = "galley";
   zoom = 0.62;
   sourceOpen = true;
   inspectorOpen = true;
+  sourceW = 360;
+  inspectorW = 360;
   lastCompiled = { html: "", footnoteCount: 0, imageCount: 0, citationCount: 0 };
+  licenseStatus: LicenseStatus | null = null;
+  supabaseUser: any = null;
+  supabaseProfile: any = null;
+  onlineTemplates: CommunityTemplate[] = [];
 
   // refs
   root: HTMLElement;
@@ -107,6 +121,36 @@ class App {
   inspectorIcon!: HTMLElement;
   pageCounter!: HTMLElement;
   fileInput!: HTMLInputElement;
+
+  globalKeys = (e: KeyboardEvent) => {
+    if (e.ctrlKey || e.metaKey) {
+      if (e.key === "s" || e.key === "S") {
+        e.preventDefault();
+        this.store.persistForce();
+        snackbar("Documento salvato con successo!");
+        const label = document.getElementById("saveLabel");
+        const t = new Date().toLocaleTimeString("it", { hour: "2-digit", minute: "2-digit" });
+        if (label) label.textContent = `Salvato ${t}`;
+      } else if (e.key === "p" || e.key === "P") {
+        e.preventDefault();
+        if (this.view !== "paged") {
+          this.view = "paged";
+          bindSegmentedActive("viewSeg", "paged");
+          this.renderPreview().then(() => {
+            setTimeout(() => printDocument(), 400);
+          });
+        } else {
+          printDocument();
+        }
+      } else if (e.key === "z" || e.key === "Z") {
+        e.preventDefault();
+        this.undo();
+      } else if (e.key === "y" || e.key === "Y") {
+        e.preventDefault();
+        this.redo();
+      }
+    }
+  };
 
   schedulePreview = debounce(() => this.renderPreview(), 160);
   schedulePaged = debounce(() => this.renderPreview(), 420);
@@ -130,10 +174,42 @@ class App {
   }
 
   /* Licensing gate (Electron only) — verify offline before showing the app. */
+  async loadOnlineTemplates() {
+    try {
+      const { data, error } = await supabase
+        .from("community_templates")
+        .select("*")
+        .order("created_at", { ascending: false });
+      if (!error && data) {
+        this.onlineTemplates = data;
+      }
+    } catch (e) {
+      console.error("Errore caricamento modelli online:", e);
+    }
+  }
+
   async boot() {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        this.supabaseUser = session.user;
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("id", session.user.id)
+          .single();
+        this.supabaseProfile = profile;
+      }
+    } catch (e) {
+      console.error("Errore autenticazione Supabase:", e);
+    }
+
+    await this.loadOnlineTemplates();
+
     if (desktop?.license) {
       try {
         const st = await desktop.license.status();
+        this.licenseStatus = st;
         if (!st.valid) {
           this.renderLicenseGate(st);
           return;
@@ -234,7 +310,113 @@ class App {
     this.fileInput = byId("fileInput");
     this.bindTitlebar();
     this.bindFileInput();
+    
+    document.addEventListener("blur", (e) => {
+      const target = e.target as HTMLElement;
+      if (target && target.hasAttribute("data-field")) {
+        const field = target.getAttribute("data-field") as keyof FrontMatter;
+        let val = target.innerText.trim();
+        const defaultPlaceholders = ["Occhiello", "Titolo principale", "Sommario dell'articolo", "Nome dell'autore"];
+        if (defaultPlaceholders.includes(val)) {
+          val = "";
+        }
+        this.store.setFront(field, val);
+        if (field === "headline" && this.store.state.title === "Senza titolo") {
+          this.store.set({ title: val || "Senza titolo" });
+          const titleInput = byId<HTMLInputElement>("docTitle");
+          if (titleInput) titleInput.value = val || "Senza titolo";
+        }
+        const inputId = `fm${field.charAt(0).toUpperCase() + field.slice(1)}`;
+        const sidebarInput = document.getElementById(inputId) as HTMLInputElement | null;
+        if (sidebarInput) sidebarInput.value = val;
+        this.renderPreview();
+      }
+    }, true);
+
+    document.addEventListener("focusin", (e) => {
+      const target = e.target as HTMLElement;
+      if (target && target.getAttribute("data-body-block") === "true") {
+        this.originalBlockText = getBlockMd(target.tagName, target.innerHTML);
+      }
+    });
+
+    document.addEventListener("focusout", (e) => {
+      const target = e.target as HTMLElement;
+      if (target && target.getAttribute("data-body-block") === "true") {
+        const oldMd = this.originalBlockText.trim();
+        const newMd = getBlockMd(target.tagName, target.innerHTML).trim();
+        
+        if (oldMd !== newMd && this.store.state.source.includes(oldMd)) {
+          this.pushState(this.store.state.source);
+          const updatedSource = this.store.state.source.replace(oldMd, newMd);
+          this.store.set({ source: updatedSource });
+          const ed = byId<HTMLTextAreaElement>("editor");
+          if (ed) ed.value = updatedSource;
+          this.renderPreview();
+        }
+      }
+    });
+
+    document.addEventListener("keydown", (e) => {
+      const target = e.target as HTMLElement;
+      if (target && (target.hasAttribute("data-field") || target.getAttribute("data-body-block") === "true") && e.key === "Enter") {
+        e.preventDefault();
+        target.blur();
+      }
+    });
+
+    document.addEventListener("selectionchange", () => {
+      const sel = window.getSelection();
+      if (sel && !sel.isCollapsed && sel.rangeCount > 0) {
+        const range = sel.getRangeAt(0);
+        let node: Node | null = range.startContainer;
+        let isBodyBlock = false;
+        while (node) {
+          if (node instanceof HTMLElement && node.getAttribute("data-body-block") === "true") {
+            isBodyBlock = true;
+            break;
+          }
+          node = node.parentNode;
+        }
+        
+        if (isBodyBlock) {
+          const rects = range.getClientRects();
+          if (rects.length > 0) {
+            this.showFloatingFormatBar(rects[0], range);
+            return;
+          }
+        }
+      }
+      
+      const activeEl = document.activeElement;
+      if (activeEl && activeEl.closest("#floatingFormatBar")) {
+        return;
+      }
+      this.hideFloatingFormatBar();
+    });
+    
+    document.removeEventListener("keydown", this.globalKeys);
+    document.addEventListener("keydown", this.globalKeys);
+
     this.goScreen(this.screen);
+    this.pushState(this.store.state.source);
+    // visible autosave confirmation (the store persists on every change)
+    this.store.subscribe(() => this.flashSaved());
+  }
+
+  private savedTimer?: number;
+  flashSaved() {
+    const dot = document.getElementById("saveDot");
+    const label = document.getElementById("saveLabel");
+    if (!dot || !label) return;
+    dot.classList.add("saving");
+    label.textContent = "Salvataggio…";
+    clearTimeout(this.savedTimer);
+    this.savedTimer = window.setTimeout(() => {
+      dot.classList.remove("saving");
+      const t = new Date().toLocaleTimeString("it", { hour: "2-digit", minute: "2-digit" });
+      label.textContent = `Salvato ${t}`;
+    }, 250);
   }
 
   goScreen(s: Screen) {
@@ -257,12 +439,15 @@ class App {
     this.screenRoot.innerHTML = `
       <div class="workspace" id="workspace">
         ${this.rail()}
-        <section class="pane source-pane" id="sourcePane">${this.sourcePane()}</section>
+        <section class="pane source-pane" id="sourcePane">${this.sourcePane()}
+          <div class="col-resizer" data-resize="source" style="right:-4px" data-tip="Trascina per ridimensionare"></div>
+        </section>
         <section class="pane preview-pane">
           ${this.previewHead()}
           <div class="preview-scroll" id="previewScroll"><div class="preview-stage" id="stage"></div></div>
         </section>
         <aside class="inspector" id="inspector">
+          <div class="col-resizer" data-resize="inspector" style="left:-4px"></div>
           <div class="inspector-head">${icon("tune")}<h2 id="inspTitle">Documento</h2></div>
           <div class="inspector-body" id="inspBody"></div>
         </aside>
@@ -279,10 +464,52 @@ class App {
     this.bindSource();
     this.bindPreviewHead();
     this.bindDnd();
+    this.bindResizers();
 
     this.zoom = this.fitZoomValue();
     this.renderInspector();
     this.renderPreview();
+  }
+
+  bindResizers() {
+    const ws = byId("workspace");
+    this.screenRoot.querySelectorAll<HTMLElement>(".col-resizer").forEach((handle) => {
+      handle.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        const which = handle.dataset.resize as "source" | "inspector";
+        const startX = e.clientX;
+        const startW = which === "source" ? this.sourceW : this.inspectorW;
+        handle.classList.add("dragging");
+        ws.classList.add("resizing"); // disable grid transition while dragging
+        document.body.classList.add("resizing-active");
+        document.body.style.cursor = "col-resize";
+        const onMove = (ev: MouseEvent) => {
+          const dx = ev.clientX - startX;
+          const w = Math.max(220, Math.min(620, which === "source" ? startW + dx : startW - dx));
+          if (which === "source") {
+            this.sourceW = w;
+            ws.style.setProperty("--source-w", `${w}px`);
+          } else {
+            this.inspectorW = w;
+            ws.style.setProperty("--inspector-w", `${w}px`);
+          }
+        };
+        const onUp = () => {
+          handle.classList.remove("dragging");
+          ws.classList.remove("resizing");
+          document.body.classList.remove("resizing-active");
+          document.body.style.cursor = "";
+          document.removeEventListener("mousemove", onMove);
+          document.removeEventListener("mouseup", onUp);
+          this.applyZoom();
+        };
+        document.addEventListener("mousemove", onMove);
+        document.addEventListener("mouseup", onUp);
+      });
+    });
+    // disable the grid width transition while dragging feels instant
+    ws.style.setProperty("--source-w", `${this.sourceW}px`);
+    ws.style.setProperty("--inspector-w", `${this.inspectorW}px`);
   }
 
   titlebar(): string {
@@ -302,13 +529,15 @@ class App {
       <div class="tb-center">
         <span class="status-chip editor-only" id="statusChip"></span>
         <div class="doc-title editor-only" id="docTitleWrap">
-          <span class="dot" data-tip="Salvato in locale"></span>
+          <span class="dot" id="saveDot" data-tip="Stato salvataggio"></span>
+          <span class="save-label" id="saveLabel">Salvato</span>
           <input id="docTitle" type="text" value="${escapeHtml(this.store.state.title)}" spellcheck="false">
+          ${!this.prefs.autosave ? `<button class="btn btn--filled btn--sm" id="manualSaveBtn" style="margin-left:10px;padding:0 8px;height:24px;font-size:11px;border-radius:4px">${icon("save", "sm")}Salva</button>` : ""}
         </div>
         <div class="screen-label off-editor" id="screenLabel"></div>
       </div>
       <div class="tb-right">
-        <button class="icon-btn editor-only" id="toggleSource" data-tip="Mostra/nascondi sorgente">${icon("dock_to_right")}</button>
+        <button class="icon-btn editor-only" id="toggleInspector" data-tip="Mostra/nascondi barra laterale">${icon(this.inspectorOpen ? "right_panel_close" : "right_panel_open")}</button>
         <button class="icon-btn" id="settingsBtn" data-tip="Impostazioni">${icon("settings")}</button>
         <button class="icon-btn" id="themeBtn" data-tip="Tema chiaro/scuro">${icon("dark_mode")}</button>
         ${
@@ -331,6 +560,11 @@ class App {
     if (ti) ti.value = this.store.state.title;
     const themeIcon = document.querySelector("#themeBtn .msi");
     if (themeIcon) themeIcon.textContent = this.prefs.theme === "dark" ? "light_mode" : "dark_mode";
+    
+    const rightPanelBtn = document.querySelector("#toggleInspector .msi");
+    if (rightPanelBtn) {
+      rightPanelBtn.textContent = this.inspectorOpen ? "right_panel_close" : "right_panel_open";
+    }
     this.updateStatusChip();
   }
 
@@ -353,33 +587,67 @@ class App {
   }
 
   sourcePane(): string {
-    const tools: [string, string, string][] = [
-      ["format_bold", "**", "Grassetto"],
-      ["format_italic", "_", "Corsivo"],
-      ["title", "## ", "Titolo"],
-      ["format_quote", "> ", "Citazione"],
-      ["format_size", ":::pullquote", "Pull quote"],
-      ["image", "image", "Immagine"],
-      ["superscript", "[^n]", "Nota"],
-      ["link", "link", "Link"],
-      ["format_list_bulleted", "- ", "Elenco"],
-    ];
     return `
       <div class="pane-head">
-        <span class="pane-title">${icon("code", "sm")} Sorgente · Markdown</span>
+        <span class="pane-title">${icon("edit_document", "sm")} Sorgente</span>
         <span class="spacer"></span>
+        <button class="icon-btn" id="mdHelpBtn" data-tip="Guida alla scrittura">${icon("help_outline", "sm")}</button>
       </div>
       <div class="md-toolbar" id="mdToolbar">
-        ${tools
-          .map(
-            ([ic, , tip], i) =>
-              `${i === 5 || i === 2 ? '<span class="sep"></span>' : ""}<button class="icon-btn" data-md="${ic}" data-tip="${tip}">${icon(ic, "sm")}</button>`
-          )
-          .join("")}
+        <button class="icon-btn" data-md="format_bold" data-tip="Grassetto (Ctrl+B)">${icon("format_bold", "sm")}</button>
+        <button class="icon-btn" data-md="format_italic" data-tip="Corsivo (Ctrl+I)">${icon("format_italic", "sm")}</button>
+        <span class="sep"></span>
+        <button class="icon-btn" data-md="title" data-tip="Titolo di sezione">${icon("title", "sm")}</button>
+        <button class="icon-btn" data-md="format_quote" data-tip="Citazione">${icon("format_quote", "sm")}</button>
+        <button class="icon-btn" data-md="format_size" data-tip="Pull quote">${icon("format_size", "sm")}</button>
+        <span class="sep"></span>
+        
+        <!-- Dropdown Colore -->
+        <div class="toolbar-dropdown" id="tbColorDropdown">
+          <button class="icon-btn" id="tbColorTrigger" data-tip="Colora testo">${icon("palette", "sm")}</button>
+          <div class="dropdown-menu color-grid-menu" id="tbColorMenu" style="display:none;">
+            ${["#18181a", "#000000", "#555555", "#991b1b", "#ea580c", "#d97706", "#14532d", "#0f766e", "#1e3a8a", "#4f46e5", "#7c3aed", "#c026d3", "#db2777", "#854d0e"]
+              .map((c) => `<button class="color-menu-sw" data-col="${c}" style="background:${c}"></button>`)
+              .join("")}
+          </div>
+        </div>
+
+        <!-- Dropdown Font -->
+        <div class="toolbar-dropdown" id="tbFontDropdown">
+          <button class="icon-btn" id="tbFontTrigger" data-tip="Font in linea">${icon("font_download", "sm")}</button>
+          <div class="dropdown-menu font-list-menu" id="tbFontMenu" style="display:none;">
+            ${FONT_OPTIONS.map(([val, label]) => `<button class="font-menu-item" data-font="${val}">${label}</button>`).join("")}
+          </div>
+        </div>
+
+        <span class="sep"></span>
+        <button class="icon-btn" data-md="image" data-tip="Carica immagine">${icon("image", "sm")}</button>
+        <button class="icon-btn" data-md="superscript" data-tip="Nota a piè pagina">${icon("superscript", "sm")}</button>
+        <button class="icon-btn" data-md="link" data-tip="Link internet (Ctrl+K)">${icon("link", "sm")}</button>
+        <button class="icon-btn" data-md="format_list_bulleted" data-tip="Elenco">${icon("format_list_bulleted", "sm")}</button>
       </div>
-      <textarea class="editor" id="editor" spellcheck="false" placeholder="Scrivi o incolla il tuo testo in Markdown…">${escapeHtml(
+      
+      <div class="find-replace-panel" id="findReplacePanel" style="display:none; padding: 6px 12px; background: var(--md-surface-container-high); border-bottom: 1px solid var(--hairline); align-items: center; gap: 8px;">
+        <div style="display:flex; gap:6px; align-items:center; width:100%;">
+          <input type="text" id="findInput" placeholder="Trova…" style="flex:1; background:var(--md-surface-container-highest); color:var(--md-on-surface); border:1px solid var(--hairline); border-radius:4px; padding:4px 8px; font-size:12px;">
+          <input type="text" id="replaceInput" placeholder="Sostituisci…" style="flex:1; background:var(--md-surface-container-highest); color:var(--md-on-surface); border:1px solid var(--hairline); border-radius:4px; padding:4px 8px; font-size:12px;">
+          <button class="btn btn--tonal btn--sm" id="btnReplace" style="height:26px; padding:0 8px; font-size:11px;">Sostituisci</button>
+          <button class="btn btn--tonal btn--sm" id="btnReplaceAll" style="height:26px; padding:0 8px; font-size:11px;">Tutti</button>
+          <button class="icon-btn" id="btnCloseFind" style="width:26px; height:26px;">${icon("close", "xs")}</button>
+        </div>
+      </div>
+
+      <textarea class="editor" id="editor" spellcheck="false" placeholder="Scrivi o incolla il tuo testo in Markdown…" style="flex:1; min-height:0;">${escapeHtml(
         this.store.state.source
-      )}</textarea>`;
+      )}</textarea>
+      
+      <div class="editor-status-bar" id="editorStatus">
+        <span class="status-item" id="statusCount" style="margin-right:12px;">0 parole</span>
+        <span class="status-item" id="statusChars" style="margin-right:12px;">0 caratteri</span>
+        <span class="status-item" id="statusSel" style="display:none; color:var(--accent); font-weight:600;"></span>
+        <span class="spacer" style="flex:1;"></span>
+        <span class="status-item" style="opacity:0.8; font-size:9.5px; text-transform:uppercase; letter-spacing:0.4px;">Ctrl+F Trova · Ctrl+S Salva · Ctrl+P Stampa</span>
+      </div>`;
   }
 
   previewHead(): string {
@@ -392,8 +660,9 @@ class App {
       <button class="icon-btn" id="zoomIn" data-tip="Ingrandisci">${icon("zoom_in")}</button>
       <button class="icon-btn" id="zoomFit" data-tip="Adatta">${icon("fit_screen")}</button>
       <div class="vsep"></div>
-      <button class="icon-btn ${this.s.showColumns || this.s.showMargins ? "is-active" : ""}" id="gridQuick" data-tip="Griglia">${icon("grid_4x4")}</button>
-      <button class="icon-btn ${this.s.cmykPreview ? "is-active" : ""}" id="cmykQuick" data-tip="Anteprima CMYK">${icon("palette")}</button>
+      <button class="icon-btn ${this.facing ? "is-active" : ""}" id="facingQuick" data-tip="Pagine affiancate (Spread)" style="display:${this.view === 'paged' ? 'inline-flex' : 'none'};">${icon("chrome_reader_mode")}</button>
+      <button class="icon-btn ${this.s.showColumns || this.s.showMargins ? "is-active" : ""}" id="gridQuick" data-tip="Mostra griglia e margini">${icon("grid_4x4")}</button>
+      <button class="btn btn--filled btn--sm" id="saveQuick" style="height:28px;padding:0 10px;gap:4px;font-size:11.5px" data-tip="Salva modifiche (floppy)">${icon("save", "xs")} Salva</button>
     </div>`;
   }
 
@@ -405,12 +674,36 @@ class App {
     byId<HTMLInputElement>("docTitle").addEventListener("input", (e) => {
       this.store.set({ title: (e.target as HTMLInputElement).value });
     });
-    byId("toggleSource").onclick = () => {
+    byId("toggleInspector").onclick = () => {
       if (this.screen !== "editor") return;
-      this.sourceOpen = !this.sourceOpen;
-      byId("workspace").classList.toggle("source-collapsed", !this.sourceOpen);
+      this.inspectorOpen = !this.inspectorOpen;
+      const ws = byId("workspace");
+      ws.classList.toggle("inspector-collapsed", !this.inspectorOpen);
+      ws.style.setProperty("--inspector-w", this.inspectorOpen ? `${this.inspectorW}px` : "0px");
+      
+      const rightPanelBtn = document.querySelector("#toggleInspector .msi");
+      if (rightPanelBtn) {
+        rightPanelBtn.textContent = this.inspectorOpen ? "right_panel_close" : "right_panel_open";
+      }
+      
+      this.root.querySelectorAll<HTMLElement>(".rail-item").forEach((b) =>
+        b.classList.toggle("is-active", this.inspectorOpen && b.dataset.tool === this.tool)
+      );
+
       setTimeout(() => this.applyZoom(), 260);
     };
+
+    const manualSave = document.getElementById("manualSaveBtn");
+    if (manualSave) {
+      manualSave.onclick = () => {
+        this.store.persistForce();
+        snackbar("Documento salvato con successo!");
+        const label = document.getElementById("saveLabel");
+        const t = new Date().toLocaleTimeString("it", { hour: "2-digit", minute: "2-digit" });
+        if (label) label.textContent = `Salvato ${t}`;
+      };
+    }
+
     byId("themeBtn").onclick = () => this.toggleTheme();
     byId("importBtn").onclick = () => this.fileInput.click();
     byId("exportBtn").onclick = () => {
@@ -438,36 +731,220 @@ class App {
 
   bindSource() {
     const ed = byId<HTMLTextAreaElement>("editor");
+    
+    this.updateEditorStatus();
+
     ed.addEventListener("input", () => {
       this.store.set({ source: ed.value });
       this.schedule();
       this.updateReviewReadouts();
+      this.updateEditorStatus();
+      this.pushStateDebounced();
+      if (this.tool === "typography") {
+        this.updateSelectionFormattingPanel();
+      }
     });
+
+    const updateSel = () => {
+      this.lastSelection = { start: ed.selectionStart, end: ed.selectionEnd };
+      this.updateEditorStatus();
+      if (this.tool === "typography") {
+        this.updateSelectionFormattingPanel();
+      }
+    };
+    ed.addEventListener("select", updateSel);
+    ed.addEventListener("keyup", updateSel);
+    ed.addEventListener("mousedown", () => setTimeout(updateSel, 0));
+    ed.addEventListener("click", updateSel);
+
+    ed.addEventListener("keydown", (e) => {
+      if (e.ctrlKey || e.metaKey) {
+        if (e.key === "b" || e.key === "B") {
+          e.preventDefault();
+          this.applyMd("format_bold", ed);
+        } else if (e.key === "i" || e.key === "I") {
+          e.preventDefault();
+          this.applyMd("format_italic", ed);
+        } else if (e.key === "k" || e.key === "K") {
+          e.preventDefault();
+          this.applyMd("link", ed);
+        } else if (e.key === "f" || e.key === "F") {
+          e.preventDefault();
+          const fr = byId("findReplacePanel");
+          if (fr) {
+            const isHidden = fr.style.display === "none";
+            fr.style.display = isHidden ? "flex" : "none";
+            if (isHidden) {
+              const findIn = byId<HTMLInputElement>("findInput");
+              if (findIn) {
+                findIn.focus();
+                findIn.select();
+              }
+            }
+          }
+        }
+      }
+    });
+
+    const btnReplace = byId("btnReplace");
+    const btnReplaceAll = byId("btnReplaceAll");
+    const btnCloseFind = byId("btnCloseFind");
+    const findInput = byId<HTMLInputElement>("findInput");
+    const replaceInput = byId<HTMLInputElement>("replaceInput");
+    const frPanel = byId("findReplacePanel");
+
+    if (btnCloseFind && frPanel) {
+      btnCloseFind.onclick = () => {
+        frPanel.style.display = "none";
+        ed.focus();
+      };
+    }
+
+    if (btnReplace && findInput && replaceInput) {
+      btnReplace.onclick = () => {
+        const query = findInput.value;
+        const rep = replaceInput.value;
+        if (!query) return;
+        
+        const idx = ed.value.indexOf(query, ed.selectionEnd);
+        const targetIdx = idx !== -1 ? idx : ed.value.indexOf(query);
+        
+        if (targetIdx !== -1) {
+          ed.focus();
+          ed.setSelectionRange(targetIdx, targetIdx + query.length);
+          ed.setRangeText(rep, targetIdx, targetIdx + query.length, "select");
+          this.store.set({ source: ed.value });
+          this.renderPreview();
+          this.updateEditorStatus();
+        } else {
+          snackbar("Nessuna corrispondenza trovata.");
+        }
+      };
+    }
+
+    if (btnReplaceAll && findInput && replaceInput) {
+      btnReplaceAll.onclick = () => {
+        const query = findInput.value;
+        const rep = replaceInput.value;
+        if (!query) return;
+        
+        if (ed.value.includes(query)) {
+          const newText = ed.value.replaceAll(query, rep);
+          ed.value = newText;
+          this.store.set({ source: newText });
+          this.renderPreview();
+          this.updateEditorStatus();
+          snackbar("Sostituzioni completate con successo!");
+        } else {
+          snackbar("Nessuna corrispondenza trovata.");
+        }
+      };
+    }
+
+    // Toggle color menu
+    const colorTrigger = byId("tbColorTrigger");
+    const colorMenu = byId("tbColorMenu");
+    if (colorTrigger && colorMenu) {
+      colorTrigger.onclick = (e) => {
+        e.stopPropagation();
+        colorMenu.style.display = colorMenu.style.display === "none" ? "grid" : "none";
+        const fontMenu = byId("tbFontMenu");
+        if (fontMenu) fontMenu.style.display = "none";
+      };
+    }
+
+    // Toggle font menu
+    const fontTrigger = byId("tbFontTrigger");
+    const fontMenu = byId("tbFontMenu");
+    if (fontTrigger && fontMenu) {
+      fontTrigger.onclick = (e) => {
+        e.stopPropagation();
+        fontMenu.style.display = fontMenu.style.display === "none" ? "flex" : "none";
+        const colorMenu = byId("tbColorMenu");
+        if (colorMenu) colorMenu.style.display = "none";
+      };
+    }
+
+    // Close menus on click outside
+    document.addEventListener("click", () => {
+      if (colorMenu) colorMenu.style.display = "none";
+      if (fontMenu) fontMenu.style.display = "none";
+    });
+
+    // Apply color from toolbar dropdown
+    colorMenu?.querySelectorAll<HTMLElement>(".color-menu-sw").forEach((b) => {
+      b.onclick = () => {
+        const c = b.dataset.col!;
+        this.applyInlineStyle("color", c);
+      };
+    });
+
+    // Apply font from toolbar dropdown
+    fontMenu?.querySelectorAll<HTMLElement>(".font-menu-item").forEach((b) => {
+      b.onclick = () => {
+        const f = b.dataset.font!;
+        this.applyInlineStyle("font", f);
+      };
+    });
+
     byId("mdToolbar")
       .querySelectorAll<HTMLElement>("[data-md]")
       .forEach((b) => (b.onclick = () => this.applyMd(b.dataset.md!, ed)));
+
+    const goTypo = document.getElementById("srcGoTypography");
+    if (goTypo) {
+      goTypo.onclick = () => {
+        if (this.screen !== "editor") this.goScreen("editor");
+        this.switchTool("typography");
+      };
+    }
+
+    const helpBtn = document.getElementById("mdHelpBtn");
+    if (helpBtn) {
+      helpBtn.onclick = () => this.openMarkdownHelp();
+    }
   }
 
   bindPreviewHead() {
     bindSegmented("viewSeg", (v) => {
       this.view = v as ViewMode;
+      const facingBtn = byId("facingQuick");
+      if (facingBtn) {
+        facingBtn.style.display = v === "paged" ? "inline-flex" : "none";
+      }
       this.renderPreview();
     });
     byId("zoomOut").onclick = () => this.setZoom(this.zoom - 0.08);
     byId("zoomIn").onclick = () => this.setZoom(this.zoom + 0.08);
     byId("zoomFit").onclick = () => this.setZoom(this.fitZoomValue());
+    
+    const facingBtn = byId("facingQuick");
+    if (facingBtn) {
+      facingBtn.onclick = () => {
+        this.facing = !this.facing;
+        facingBtn.classList.toggle("is-active", this.facing);
+        const scrollEl = byId("previewScroll");
+        if (scrollEl) {
+          scrollEl.classList.toggle("facing-pages", this.facing);
+        }
+      };
+    }
+
     byId("gridQuick").onclick = () => {
-      const on = !(this.s.showMargins || this.s.showColumns);
-      this.store.setSetting("showMargins", on);
-      if (this.s.columns > 1) this.store.setSetting("showColumns", on);
-      byId("gridQuick").classList.toggle("is-active", on);
-      this.refreshAfterSetting();
+      const show = !(this.s.showColumns || this.s.showMargins);
+      this.store.setSettings({ showColumns: show, showMargins: show });
+      byId("gridQuick").classList.toggle("is-active", show);
     };
-    byId("cmykQuick").onclick = () => {
-      this.store.setSetting("cmykPreview", !this.s.cmykPreview);
-      byId("cmykQuick").classList.toggle("is-active", this.s.cmykPreview);
-      this.updateCmyk();
-    };
+    const saveQuick = byId("saveQuick");
+    if (saveQuick) {
+      saveQuick.onclick = () => {
+        this.store.persistForce();
+        snackbar("Documento salvato con successo!");
+        const label = document.getElementById("saveLabel");
+        const t = new Date().toLocaleTimeString("it", { hour: "2-digit", minute: "2-digit" });
+        if (label) label.textContent = `Salvato ${t}`;
+      };
+    }
   }
 
   bindFileInput() {
@@ -577,14 +1054,33 @@ class App {
   }
 
   switchTool(tool: RailTool) {
-    this.tool = tool;
-    this.root.querySelectorAll<HTMLElement>(".rail-item").forEach((b) =>
-      b.classList.toggle("is-active", b.dataset.tool === tool)
-    );
-    this.renderInspector();
+    const ws = byId("workspace");
+    if (this.tool === tool && this.inspectorOpen) {
+      this.inspectorOpen = false;
+      ws.classList.add("inspector-collapsed");
+      ws.style.setProperty("--inspector-w", "0px");
+      this.root.querySelectorAll<HTMLElement>(".rail-item").forEach((b) =>
+        b.classList.remove("is-active")
+      );
+    } else {
+      this.tool = tool;
+      this.inspectorOpen = true;
+      ws.classList.remove("inspector-collapsed");
+      ws.style.setProperty("--inspector-w", `${this.inspectorW}px`);
+      this.root.querySelectorAll<HTMLElement>(".rail-item").forEach((b) =>
+        b.classList.toggle("is-active", b.dataset.tool === tool)
+      );
+      this.renderInspector();
+    }
+    const rightPanelBtn = document.querySelector("#toggleInspector .msi");
+    if (rightPanelBtn) {
+      rightPanelBtn.textContent = this.inspectorOpen ? "right_panel_close" : "right_panel_open";
+    }
+    setTimeout(() => this.applyZoom(), 260);
   }
 
   applyMd(kind: string, ed: HTMLTextAreaElement) {
+    this.pushState(ed.value);
     const start = ed.selectionStart;
     const end = ed.selectionEnd;
     const sel = ed.value.slice(start, end);
@@ -606,9 +1102,35 @@ class App {
       case "format_size":
         insert = `\n:::pullquote\n${sel || "Frase di grande impatto."}\n:::\n`;
         break;
-      case "image":
-        insert = `\n![${sel || "descrizione"}](placeholder "Didascalia | Foto: Autore")\n`;
+      case "palette":
+        insert = `[${sel || "testo"}]{color: #e01a1a}`;
         break;
+      case "font_download":
+        insert = `[${sel || "testo"}]{font: display}`;
+        break;
+      case "image": {
+        const fileInput = document.createElement("input");
+        fileInput.type = "file";
+        fileInput.accept = "image/*";
+        fileInput.onchange = () => {
+          const file = fileInput.files?.[0];
+          if (file) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+              const base64 = e.target?.result as string;
+              const alt = file.name.substring(0, file.name.lastIndexOf('.')) || "immagine";
+              const md = `\n![${alt}](${base64} "Didascalia dell'immagine | Foto: Autore")\n`;
+              ed.setRangeText(md, start, end, "end");
+              ed.focus();
+              this.store.set({ source: ed.value });
+              this.renderPreview();
+            };
+            reader.readAsDataURL(file);
+          }
+        };
+        fileInput.click();
+        return;
+      }
       case "superscript":
         insert = `${sel}[^nota]`;
         caret = 0;
@@ -626,6 +1148,422 @@ class App {
     this.store.set({ source: ed.value });
     this.schedule();
     this.updateReviewReadouts();
+  }
+
+  isMatchingKey(k1: string, k2: string): boolean {
+    k1 = k1.trim().toLowerCase();
+    k2 = k2.trim().toLowerCase();
+    if (k1 === k2) return true;
+    if ((k1 === "font" || k1 === "font-family") && (k2 === "font" || k2 === "font-family")) return true;
+    if ((k1 === "bg" || k1 === "background" || k1 === "background-color") && (k2 === "bg" || k2 === "background" || k2 === "background-color")) return true;
+    if ((k1 === "size" || k1 === "font-size") && (k2 === "size" || k2 === "font-size")) return true;
+    if ((k1 === "decoration" || k1 === "text-decoration") && (k2 === "decoration" || k2 === "text-decoration")) return true;
+    if ((k1 === "weight" || k1 === "font-weight") && (k2 === "weight" || k2 === "font-weight")) return true;
+    if ((k1 === "style" || k1 === "font-style") && (k2 === "style" || k2 === "font-style")) return true;
+    return false;
+  }
+
+  applyInlineStyle(key: string, val: string): boolean {
+    const ed = byId<HTMLTextAreaElement>("editor");
+    if (!ed) return false;
+    
+    this.pushState(ed.value);
+    let start = ed.selectionStart;
+    let end = ed.selectionEnd;
+    if (start === end && this.lastSelection.start !== this.lastSelection.end) {
+      start = this.lastSelection.start;
+      end = this.lastSelection.end;
+    }
+
+    if (start === end) return false;
+
+    let sel = ed.value.slice(start, end);
+    const match = sel.match(/^\[(.*)\]\{([^}]+)\}$/);
+    if (match) {
+      const innerText = match[1];
+      const styleStr = match[2];
+      const styles = styleStr.split(";").map(s => s.trim()).filter(Boolean);
+      let foundKey = false;
+      const updatedStyles = styles.map(s => {
+        const parts = s.split(":");
+        if (parts.length >= 2) {
+          const k = parts[0].trim().toLowerCase();
+          if (this.isMatchingKey(k, key)) {
+            foundKey = true;
+            return `${parts[0].trim()}: ${val}`;
+          }
+        }
+        return s;
+      });
+      if (!foundKey) {
+        updatedStyles.push(`${key}: ${val}`);
+      }
+      const insert = `[${innerText}]{${updatedStyles.join("; ")}}`;
+      ed.setRangeText(insert, start, end, "select");
+      ed.focus();
+      this.lastSelection = { start, end: start + insert.length };
+      this.store.set({ source: ed.value });
+      this.renderPreview();
+      this.updateSelectionFormattingPanel();
+      return true;
+    }
+
+    let insert = `[${sel}]{${key}: ${val}}`;
+    ed.setRangeText(insert, start, end, "select");
+    ed.focus();
+    this.lastSelection = { start, end: start + insert.length };
+    this.store.set({ source: ed.value });
+    this.renderPreview();
+    this.updateSelectionFormattingPanel();
+    return true;
+  }
+
+  removeInlineStyleKey(key: string): boolean {
+    const ed = byId<HTMLTextAreaElement>("editor");
+    if (!ed) return false;
+    
+    this.pushState(ed.value);
+    let start = ed.selectionStart;
+    let end = ed.selectionEnd;
+    if (start === end && this.lastSelection.start !== this.lastSelection.end) {
+      start = this.lastSelection.start;
+      end = this.lastSelection.end;
+    }
+
+    if (start === end) return false;
+
+    let sel = ed.value.slice(start, end);
+    const match = sel.match(/^\[(.*)\]\{([^}]+)\}$/);
+    if (match) {
+      const innerText = match[1];
+      const styleStr = match[2];
+      const styles = styleStr.split(";").map(s => s.trim()).filter(Boolean);
+      const updatedStyles = styles.filter(s => {
+        const parts = s.split(":");
+        if (parts.length >= 2) {
+          const k = parts[0].trim().toLowerCase();
+          if (this.isMatchingKey(k, key)) {
+            return false;
+          }
+        }
+        return true;
+      });
+      
+      let insert = "";
+      if (updatedStyles.length > 0) {
+        insert = `[${innerText}]{${updatedStyles.join("; ")}}`;
+      } else {
+        insert = innerText;
+      }
+      ed.setRangeText(insert, start, end, "select");
+      ed.focus();
+      this.lastSelection = { start, end: start + insert.length };
+      this.store.set({ source: ed.value });
+      this.renderPreview();
+      this.updateSelectionFormattingPanel();
+      return true;
+    }
+    return false;
+  }
+
+  clearInlineSelectionStyle(): boolean {
+    const ed = byId<HTMLTextAreaElement>("editor");
+    if (!ed) return false;
+    
+    this.pushState(ed.value);
+    let start = ed.selectionStart;
+    let end = ed.selectionEnd;
+    if (start === end && this.lastSelection.start !== this.lastSelection.end) {
+      start = this.lastSelection.start;
+      end = this.lastSelection.end;
+    }
+
+    if (start === end) return false;
+
+    let sel = ed.value.slice(start, end);
+    const match = sel.match(/^\[(.*)\]\{([^}]+)\}$/);
+    if (match) {
+      const innerText = match[1];
+      ed.setRangeText(innerText, start, end, "select");
+      ed.focus();
+      this.lastSelection = { start, end: start + innerText.length };
+      this.store.set({ source: ed.value });
+      this.renderPreview();
+      this.updateSelectionFormattingPanel();
+      return true;
+    }
+    return false;
+  }
+
+  updateSelectionFormattingPanel() {
+    const panel = document.getElementById("selectionStyleSection");
+    if (!panel) return;
+
+    const ed = byId<HTMLTextAreaElement>("editor");
+    if (!ed) return;
+
+    const start = ed.selectionStart;
+    const end = ed.selectionEnd;
+    if (start === end) {
+      panel.style.display = "none";
+      return;
+    }
+
+    panel.style.display = "block";
+
+    // Populate values
+    const sel = ed.value.slice(start, end);
+    const match = sel.match(/^\[(.*)\]\{([^}]+)\}$/);
+
+    const fSelect = byId<HTMLSelectElement>("selFont");
+    const cInput = byId<HTMLInputElement>("selColor");
+    const bgInput = byId<HTMLInputElement>("selBg");
+    const sSelect = byId<HTMLSelectElement>("selSize");
+    const btnB = byId<HTMLButtonElement>("selBtnBold");
+    const btnI = byId<HTMLButtonElement>("selBtnItalic");
+    const btnU = byId<HTMLButtonElement>("selBtnUnderline");
+    const btnS = byId<HTMLButtonElement>("selBtnStrike");
+
+    // Defaults
+    if (fSelect) fSelect.value = "";
+    if (cInput) cInput.value = "#000000";
+    if (bgInput) bgInput.value = "#ffff00";
+    if (sSelect) sSelect.value = "";
+    if (btnB) btnB.classList.remove("is-active");
+    if (btnI) btnI.classList.remove("is-active");
+    if (btnU) btnU.classList.remove("is-active");
+    if (btnS) btnS.classList.remove("is-active");
+
+    if (match) {
+      const styleStr = match[2];
+      const styles = styleStr.split(";").map(s => s.trim()).filter(Boolean);
+      for (const style of styles) {
+        const parts = style.split(":");
+        if (parts.length < 2) continue;
+        const key = parts[0].trim().toLowerCase();
+        const val = parts.slice(1).join(":").trim();
+
+        if (key === "color" && cInput) {
+          cInput.value = val;
+        } else if ((key === "font" || key === "font-family") && fSelect) {
+          fSelect.value = val;
+        } else if ((key === "bg" || key === "background" || key === "background-color") && bgInput) {
+          bgInput.value = val;
+        } else if ((key === "size" || key === "font-size") && sSelect) {
+          sSelect.value = val;
+        } else if (key === "weight" || key === "font-weight") {
+          if (val === "bold" && btnB) btnB.classList.add("is-active");
+        } else if (key === "style" || key === "font-style") {
+          if (val === "italic" && btnI) btnI.classList.add("is-active");
+        } else if (key === "decoration" || key === "text-decoration") {
+          if (val.includes("underline") && btnU) btnU.classList.add("is-active");
+          if (val.includes("line-through") && btnS) btnS.classList.add("is-active");
+        }
+      }
+    }
+  }
+
+  updateEditorStatus() {
+    const ed = byId<HTMLTextAreaElement>("editor");
+    if (!ed) return;
+    const text = ed.value;
+    const words = text.trim() ? text.trim().split(/\s+/).length : 0;
+    const chars = text.length;
+
+    const start = ed.selectionStart;
+    const end = ed.selectionEnd;
+    
+    const countEl = byId("statusCount");
+    const charsEl = byId("statusChars");
+    const selEl = byId("statusSel");
+    
+    if (countEl) countEl.textContent = `${words} ${words === 1 ? 'parola' : 'parole'}`;
+    if (charsEl) charsEl.textContent = `${chars} ${chars === 1 ? 'carattere' : 'caratteri'}`;
+    
+    if (selEl) {
+      if (start !== end) {
+        const selText = text.slice(start, end);
+        const selWords = selText.trim() ? selText.trim().split(/\s+/).length : 0;
+        const selChars = selText.length;
+        selEl.textContent = `Selezionato: ${selWords} ${selWords === 1 ? 'parola' : 'parole'}, ${selChars} ${selChars === 1 ? 'carattere' : 'caratteri'}`;
+        selEl.style.display = "inline-flex";
+      } else {
+        selEl.style.display = "none";
+      }
+    }
+  }
+
+  pushState(source: string) {
+    if (this.undoStack.length === 0 || this.undoStack[this.undoStack.length - 1] !== source) {
+      this.undoStack.push(source);
+      this.redoStack = [];
+      if (this.undoStack.length > 50) this.undoStack.shift();
+    }
+  }
+
+  undo() {
+    if (this.undoStack.length > 1) {
+      const current = this.undoStack.pop()!;
+      this.redoStack.push(current);
+      const prev = this.undoStack[this.undoStack.length - 1];
+      this.applyState(prev);
+    }
+  }
+
+  redo() {
+    if (this.redoStack.length > 0) {
+      const next = this.redoStack.pop()!;
+      this.undoStack.push(next);
+      this.applyState(next);
+    }
+  }
+
+  applyState(source: string) {
+    this.store.set({ source });
+    const ed = byId<HTMLTextAreaElement>("editor");
+    if (ed) {
+      const oldSelStart = ed.selectionStart;
+      const oldSelEnd = ed.selectionEnd;
+      ed.value = source;
+      ed.setSelectionRange(Math.min(oldSelStart, source.length), Math.min(oldSelEnd, source.length));
+    }
+    this.renderPreview();
+    this.updateEditorStatus();
+  }
+
+  private pushStateDebounced = debounce(() => {
+    const ed = byId<HTMLTextAreaElement>("editor");
+    if (ed) this.pushState(ed.value);
+  }, 1000);
+
+  showFloatingFormatBar(rect: DOMRect, range: Range) {
+    let bar = byId("floatingFormatBar");
+    if (!bar) {
+      bar = document.createElement("div");
+      bar.id = "floatingFormatBar";
+      bar.className = "floating-format-bar";
+      document.body.appendChild(bar);
+    }
+    
+    if (bar.style.display !== "flex") {
+      bar.innerHTML = `
+        <button class="bar-btn" id="flBold" title="Grassetto">${icon("format_bold", "xs")}</button>
+        <button class="bar-btn" id="flItalic" title="Corsivo">${icon("format_italic", "xs")}</button>
+        <div class="bar-sep"></div>
+        <div class="bar-dropdown">
+          <button class="bar-btn" id="flColor" title="Colore">${icon("palette", "xs")}</button>
+          <div class="bar-drop-menu color-grid-menu" id="flColorMenu" style="display:none;">
+            ${["#991b1b", "#ea580c", "#d97706", "#14532d", "#0f766e", "#1e3a8a", "#7c3aed", "#c026d3", "#db2777", "#854d0e", "#18181a", "#000000"]
+              .map((c) => `<button class="color-menu-sw" data-col="${c}" style="background:${c}"></button>`)
+              .join("")}
+          </div>
+        </div>
+        <div class="bar-dropdown">
+          <button class="bar-btn" id="flFont" title="Font">${icon("font_download", "xs")}</button>
+          <div class="bar-drop-menu font-list-menu" id="flFontMenu" style="display:none;">
+            ${FONT_OPTIONS.map(([val, label]) => `<button class="font-menu-item" data-font="${val}">${label}</button>`).join("")}
+          </div>
+        </div>
+      `;
+
+      const btnBold = bar.querySelector("#flBold") as HTMLButtonElement;
+      const btnItalic = bar.querySelector("#flItalic") as HTMLButtonElement;
+      const btnColor = bar.querySelector("#flColor") as HTMLButtonElement;
+      const colorMenu = bar.querySelector("#flColorMenu") as HTMLElement;
+      const btnFont = bar.querySelector("#flFont") as HTMLButtonElement;
+      const fontMenu = bar.querySelector("#flFontMenu") as HTMLElement;
+
+      btnBold.onmousedown = (e) => {
+        e.preventDefault();
+        document.execCommand("bold");
+        this.syncActiveBlock();
+      };
+
+      btnItalic.onmousedown = (e) => {
+        e.preventDefault();
+        document.execCommand("italic");
+        this.syncActiveBlock();
+      };
+
+      btnColor.onmousedown = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        colorMenu.style.display = colorMenu.style.display === "none" ? "grid" : "none";
+        fontMenu.style.display = "none";
+      };
+
+      btnFont.onmousedown = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        fontMenu.style.display = fontMenu.style.display === "none" ? "flex" : "none";
+        colorMenu.style.display = "none";
+      };
+
+      colorMenu.querySelectorAll<HTMLElement>(".color-menu-sw").forEach((sw) => {
+        sw.onmousedown = (e) => {
+          e.preventDefault();
+          const c = sw.dataset.col!;
+          document.execCommand("styleWithCSS", false, "true");
+          document.execCommand("foreColor", false, c);
+          colorMenu.style.display = "none";
+          this.syncActiveBlock();
+        };
+      });
+
+      fontMenu.querySelectorAll<HTMLElement>(".font-menu-item").forEach((item) => {
+        item.onmousedown = (e) => {
+          e.preventDefault();
+          const fontName = item.dataset.font!;
+          const fontStack = FONT_STACKS[fontName] || fontName;
+          
+          const selText = window.getSelection()?.toString() || "";
+          const span = document.createElement("span");
+          span.style.fontFamily = fontStack;
+          span.textContent = selText;
+          
+          range.deleteContents();
+          range.insertNode(span);
+          fontMenu.style.display = "none";
+          this.syncActiveBlock();
+        };
+      });
+    }
+
+    const w = 180;
+    const h = 36;
+    const left = rect.left + window.scrollX + (rect.width / 2) - (w / 2);
+    const top = rect.top + window.scrollY - h - 10;
+    
+    bar.style.position = "absolute";
+    bar.style.left = `${Math.max(10, left)}px`;
+    bar.style.top = `${Math.max(10, top)}px`;
+    bar.style.display = "flex";
+  }
+
+  syncActiveBlock() {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return;
+    let node: Node | null = sel.getRangeAt(0).startContainer;
+    while (node && !(node instanceof HTMLElement && node.getAttribute("data-body-block") === "true")) {
+      node = node.parentNode;
+    }
+    if (node instanceof HTMLElement) {
+      const oldMd = this.originalBlockText.trim();
+      const newMd = getBlockMd(node.tagName, node.innerHTML).trim();
+      if (oldMd !== newMd && this.store.state.source.includes(oldMd)) {
+        const updatedSource = this.store.state.source.replace(oldMd, newMd);
+        this.store.set({ source: updatedSource });
+        const ed = byId<HTMLTextAreaElement>("editor");
+        if (ed) ed.value = updatedSource;
+        this.originalBlockText = newMd;
+        this.renderPreview();
+      }
+    }
+  }
+
+  hideFloatingFormatBar() {
+    const bar = byId("floatingFormatBar");
+    if (bar) bar.style.display = "none";
   }
 
   /* --------------------------- zoom --------------------------- */
@@ -660,17 +1598,19 @@ class App {
   async renderPreview() {
     const compiled = this.compileDoc();
     this.lastCompiled = compiled;
+    const scrollEl = byId("previewScroll");
     if (this.view === "galley") {
       renderGalley(this.stage, compiled.html, this.s);
-      this.pageCounter.textContent = "bozza continua";
+      this.pageCounter.textContent = "Bozza";
+      if (scrollEl) scrollEl.classList.remove("facing-pages");
     } else {
-      // Paged.js measures real geometry while laying out: a CSS transform on
-      // an ancestor corrupts those measurements, so paginate at scale 1 and
-      // apply zoom only to the finished pages.
       this.stage.style.transform = "scale(1)";
       this.pageCounter.textContent = "impagino…";
       const total = await this.runPaged(compiled.html);
       this.pageCounter.textContent = total ? `${total} ${total === 1 ? "pagina" : "pagine"}` : "—";
+      if (scrollEl) {
+        scrollEl.classList.toggle("facing-pages", this.facing);
+      }
     }
     this.applyZoom();
     this.updateCmyk();
@@ -746,6 +1686,21 @@ class App {
   }
 
   /* ---- panel: document / front-matter ---- */
+  mastheadStyleRow(label: string, fontKey: string, colorKey: string): string {
+    const s = this.s as unknown as Record<string, string>;
+    const fval = s[fontKey] || "";
+    const cval = s[colorKey] || "";
+    return `<div class="mh-row">
+      <span class="mh-label">${label}</span>
+      <select class="mh-font" data-mh-font="${fontKey}">
+        <option value="">Font predefinito</option>
+        ${FONT_OPTIONS.map(([k, l]) => `<option value="${k}" ${k === fval ? "selected" : ""}>${escapeHtml(l)}</option>`).join("")}
+      </select>
+      <input type="color" class="mh-color" data-mh-color="${colorKey}" value="${cval || "#888888"}" data-tip="Colore">
+      <button class="icon-btn mh-reset" data-mh-reset="${colorKey}" data-tip="Reimposta">${icon("backspace", "sm")}</button>
+    </div>`;
+  }
+
   panelDocument(): string {
     const f = this.store.state.front;
     return `
@@ -764,8 +1719,22 @@ class App {
         <p class="help">La testata viene composta automaticamente in cima all'impaginato e nella copertina ePub.</p>
       </div>
       <div class="section">
+        <h3>${icon("format_paint", "sm")} Stile testata</h3>
+        <div class="stack">
+          ${this.mastheadStyleRow("Titolo", "headlineFont", "headlineColor")}
+          ${this.mastheadStyleRow("Occhiello", "kickerFont", "kickerColor")}
+          ${this.mastheadStyleRow("Sommario", "deckFont", "deckColor")}
+        </div>
+        <p class="help">Font e colore per ogni parte della testata. Vuoto = stile predefinito del documento.</p>
+      </div>
+      <div class="section">
         <h3>${icon("insights", "sm")} A colpo d'occhio</h3>
         <div class="metric-grid" id="docQuick"></div>
+      </div>
+      <div class="section">
+        <h3>${icon("public", "sm")} Condividi layout</h3>
+        <button class="btn btn--tonal btn--sm" style="width:100%" id="btnSidebarPublish">${icon("cloud_upload")} Pubblica nel Mondo</button>
+        <p class="help">Salva il layout e il contenuto di questo documento come modello pubblico offline.</p>
       </div>`;
   }
   bindDocument() {
@@ -783,7 +1752,31 @@ class App {
         this.schedule();
       });
     }
+    // masthead per-part font/colour
+    this.inspectorBody.querySelectorAll<HTMLSelectElement>("[data-mh-font]").forEach((el) => {
+      el.addEventListener("change", () => {
+        this.store.setSetting(el.dataset.mhFont as keyof Settings, el.value as never);
+        this.renderPreview();
+      });
+    });
+    this.inspectorBody.querySelectorAll<HTMLInputElement>("[data-mh-color]").forEach((el) => {
+      el.addEventListener("input", () => {
+        this.store.setSetting(el.dataset.mhColor as keyof Settings, el.value as never);
+        this.renderPreview();
+      });
+    });
+    this.inspectorBody.querySelectorAll<HTMLElement>("[data-mh-reset]").forEach((el) => {
+      el.onclick = () => {
+        this.store.setSetting(el.dataset.mhReset as keyof Settings, "" as never);
+        this.renderInspector();
+        this.renderPreview();
+      };
+    });
     this.updateDocQuick();
+    const pubBtn = document.getElementById("btnSidebarPublish");
+    if (pubBtn) {
+      pubBtn.onclick = () => this.openPublishModal();
+    }
   }
   updateDocQuick() {
     const host = document.getElementById("docQuick");
@@ -926,9 +1919,73 @@ class App {
   panelTypography(): string {
     const s = this.s;
     return `
+      <!-- Stile testo selezionato (dinamico) -->
+      <div class="section selection-style-section" id="selectionStyleSection" style="display: none; margin-bottom: 20px;">
+        <h3>${icon("edit_note", "sm")} Stile testo selezionato</h3>
+        <div class="stack">
+          <div class="field">
+            <label for="selFont">Font selezione</label>
+            <select id="selFont">
+              <option value="">Ereditato (corpo)</option>
+              ${FONT_OPTIONS.map(([k, l]) => `<option value="${k}">${escapeHtml(l)}</option>`).join("")}
+            </select>
+          </div>
+          <div style="display: flex; gap: 10px;">
+            <div class="field" style="flex: 1;">
+              <label for="selColor">Colore testo</label>
+              <div class="color-row">
+                <input type="color" id="selColor" value="#000000" style="padding: 2px; height: 34px;">
+              </div>
+            </div>
+            <div class="field" style="flex: 1;">
+              <label for="selBg">Evidenziatore</label>
+              <div class="color-row">
+                <input type="color" id="selBg" value="#ffff00" style="padding: 2px; height: 34px;">
+              </div>
+            </div>
+          </div>
+          <div class="field">
+            <label for="selSize">Dimensione</label>
+            <select id="selSize">
+              <option value="">Ereditato</option>
+              <option value="0.75em">Molto piccolo (75%)</option>
+              <option value="0.85em">Piccolo (85%)</option>
+              <option value="1.15em">Medio (115%)</option>
+              <option value="1.3em">Grande (130%)</option>
+              <option value="1.5em">Molto grande (150%)</option>
+              <option value="2em">Gigante (200%)</option>
+            </select>
+          </div>
+          <div class="opt-row" style="padding: 6px 0;">
+            <div class="opt-label">
+              <b>Stili rapidi</b>
+            </div>
+            <div style="display:flex; gap:6px;">
+              <button class="icon-btn" id="selBtnBold" data-tip="Grassetto">${icon("format_bold", "sm")}</button>
+              <button class="icon-btn" id="selBtnItalic" data-tip="Corsivo">${icon("format_italic", "sm")}</button>
+              <button class="icon-btn" id="selBtnUnderline" data-tip="Sottolineato">${icon("format_underlined", "sm")}</button>
+              <button class="icon-btn" id="selBtnStrike" data-tip="Barrato">${icon("strikethrough_s", "sm")}</button>
+            </div>
+          </div>
+          <button class="btn btn--tonal btn--sm" style="width:100%" id="selBtnReset">${icon("format_clear")} Ripristina stile originale</button>
+        </div>
+      </div>
+
       <div class="section">
         <h3>${icon("text_fields", "sm")} Corpo del testo</h3>
         <div class="stack">
+          ${fieldSelect("Carattere del testo", "bodyFont", FONT_OPTIONS, s.bodyFont)}
+          ${fieldSelect("Carattere dei titoli", "headingFont", FONT_OPTIONS, s.headingFont)}
+          <div class="field"><label for="textColor">Colore del testo</label>
+            <div class="color-row">
+              <input type="color" id="textColor" value="${s.textColor}">
+              <div class="color-swatches" id="textColorSwatches">
+                 ${["#18181a", "#000000", "#555555", "#991b1b", "#ea580c", "#d97706", "#14532d", "#0f766e", "#1e3a8a", "#4f46e5", "#7c3aed", "#c026d3", "#db2777", "#854d0e"]
+                  .map((c) => `<button class="color-sw" data-col="${c}" style="background:${c}"></button>`)
+                  .join("")}
+              </div>
+            </div>
+          </div>
           ${sliderRow("Corpo (pt)", "bodySize", 7, 16, 0.25, s.bodySize, " pt")}
           ${sliderRow("Interlinea", "leading", 1.0, 2.2, 0.05, s.leading, "×")}
           ${segmented("align", [["justify", "Giustificato", "format_align_justify"], ["left", "A bandiera", "format_align_left"]], s.align)}
@@ -963,6 +2020,138 @@ class App {
       </div>`;
   }
   bindTypography() {
+    // Inizializza e collega gli strumenti di stile selezione dinamica
+    this.updateSelectionFormattingPanel();
+
+    const selFont = byId<HTMLSelectElement>("selFont");
+    if (selFont) {
+      selFont.onchange = () => {
+        if (selFont.value === "") {
+          this.removeInlineStyleKey("font");
+        } else {
+          this.applyInlineStyle("font", selFont.value);
+        }
+      };
+    }
+
+    const selColor = byId<HTMLInputElement>("selColor");
+    if (selColor) {
+      selColor.oninput = () => {
+        this.applyInlineStyle("color", selColor.value);
+      };
+    }
+
+    const selBg = byId<HTMLInputElement>("selBg");
+    if (selBg) {
+      selBg.oninput = () => {
+        this.applyInlineStyle("bg", selBg.value);
+      };
+    }
+
+    const selSize = byId<HTMLSelectElement>("selSize");
+    if (selSize) {
+      selSize.onchange = () => {
+        if (selSize.value === "") {
+          this.removeInlineStyleKey("size");
+        } else {
+          this.applyInlineStyle("size", selSize.value);
+        }
+      };
+    }
+
+    const sBtnB = byId<HTMLButtonElement>("selBtnBold");
+    if (sBtnB) {
+      sBtnB.onclick = () => {
+        if (sBtnB.classList.contains("is-active")) {
+          this.removeInlineStyleKey("weight");
+        } else {
+          this.applyInlineStyle("weight", "bold");
+        }
+      };
+    }
+
+    const sBtnI = byId<HTMLButtonElement>("selBtnItalic");
+    if (sBtnI) {
+      sBtnI.onclick = () => {
+        if (sBtnI.classList.contains("is-active")) {
+          this.removeInlineStyleKey("style");
+        } else {
+          this.applyInlineStyle("style", "italic");
+        }
+      };
+    }
+
+    const sBtnU = byId<HTMLButtonElement>("selBtnUnderline");
+    if (sBtnU) {
+      sBtnU.onclick = () => {
+        if (sBtnU.classList.contains("is-active")) {
+          this.removeInlineStyleKey("decoration");
+        } else {
+          this.applyInlineStyle("decoration", "underline");
+        }
+      };
+    }
+
+    const sBtnS = byId<HTMLButtonElement>("selBtnStrike");
+    if (sBtnS) {
+      sBtnS.onclick = () => {
+        if (sBtnS.classList.contains("is-active")) {
+          this.removeInlineStyleKey("decoration");
+        } else {
+          this.applyInlineStyle("decoration", "line-through");
+        }
+      };
+    }
+
+    const sBtnReset = byId<HTMLButtonElement>("selBtnReset");
+    if (sBtnReset) {
+      sBtnReset.onclick = () => {
+        this.clearInlineSelectionStyle();
+      };
+    }
+
+    bindSelect("bodyFont", (v) => {
+      if (this.applyInlineStyle("font", v)) {
+        const select = byId<HTMLSelectElement>("bodyFont");
+        if (select) select.value = this.s.bodyFont;
+        return;
+      }
+      this.store.setSetting("bodyFont", v);
+      this.renderPreview();
+    });
+    bindSelect("headingFont", (v) => {
+      if (this.applyInlineStyle("font", v)) {
+        const select = byId<HTMLSelectElement>("headingFont");
+        if (select) select.value = this.s.headingFont;
+        return;
+      }
+      this.store.setSetting("headingFont", v);
+      this.renderPreview();
+    });
+    const hasLiveSelection = () => {
+      const ed = document.getElementById("editor") as HTMLTextAreaElement | null;
+      return !!ed && ed.selectionStart !== ed.selectionEnd;
+    };
+    const colorInput = byId<HTMLInputElement>("textColor");
+    if (colorInput) {
+      colorInput.addEventListener("input", () => {
+        if (hasLiveSelection() && this.applyInlineStyle("color", colorInput.value)) {
+          colorInput.value = this.s.textColor;
+          return;
+        }
+        this.store.setSetting("textColor", colorInput.value);
+        this.renderPreview();
+      });
+    }
+    this.inspectorBody.querySelectorAll<HTMLElement>(".color-sw").forEach((b) => {
+      b.onclick = () => {
+        const c = b.dataset.col!;
+        if (hasLiveSelection() && this.applyInlineStyle("color", c)) return;
+        this.store.setSetting("textColor", c);
+        if (colorInput) colorInput.value = c;
+        this.renderPreview();
+      };
+    });
     bindSlider("bodySize", (n) => (this.store.setSetting("bodySize", n), this.renderPreview()), " pt");
     bindSlider("leading", (n) => (this.store.setSetting("leading", n), this.renderPreview()), "×");
     bindSegmented("align", (v) => (this.store.setSetting("align", v as Settings["align"]), this.renderPreview()));
@@ -1109,34 +2298,149 @@ class App {
     });
   }
 
-  /* ---- panel: AI tools (local · offline) ---- */
+  /* ---- panel: AI tools ---- */
+  sectionHead(ic: string, title: string, kind: "local" | "remote"): string {
+    const badge =
+      kind === "local"
+        ? `<span class="badge badge--local">${icon("bolt", "xs")}Locale</span>`
+        : `<span class="badge badge--remote">${icon("cloud", "xs")}Servizio esterno</span>`;
+    return `<div class="ai-head"><h3>${icon(ic, "sm")} ${title}</h3>${badge}</div>`;
+  }
+
   panelAI(): string {
     return `
-      <div class="section">
-        <h3>${icon("policy", "sm")} Rilevatore AI · Umano vs AI</h3>
-        <div class="stack">
+      <div class="section ai-tabs-head">
+        ${segmented(
+          "aiTab",
+          [
+            ["detect", "Rileva", "policy"],
+            ["orig", "Originalità", "verified"],
+            ["rewrite", "Riscrivi", "auto_fix_high"],
+            ["para", "Riformula", "shuffle"],
+          ],
+          "detect"
+        )}
+      </div>
+      <div id="aiPane-detect" class="ai-pane">
+        ${this.sectionHead("policy", "Rilevatore AI · Umano vs AI", "local")}
+        <p class="intro">Stima <b>euristica locale</b> (stilometria): nessun modello esterno, 100% offline. Indicativa, non probatoria.</p>
+        <div class="card">
           <button class="btn btn--filled" id="aiAnalyze" style="width:100%">${icon("frame_inspect")}Analizza il testo</button>
           <div id="aiResult"></div>
-          <p class="help">Stima <b>euristica locale</b> (stilometria): nessun modello esterno, 100% offline. Indicativa, non probatoria.</p>
         </div>
       </div>
-      <div class="section">
-        <h3>${icon("auto_fix_high", "sm")} Riscrittore</h3>
-        <div class="stack">
+      <div id="aiPane-orig" class="ai-pane" hidden>
+        ${this.sectionHead("verified", "Verifica di originalità", "local")}
+        <p class="intro">Confronta il documento con gli altri testi salvati <b>su questo dispositivo</b>: cerca frammenti di almeno
+          8 parole in comune. Nessun testo lascia mai il dispositivo.</p>
+        <div class="card">
+          <button class="btn btn--filled" id="origScan" style="width:100%">${icon("fact_check")}Confronta con la libreria</button>
+          <div id="origResult"></div>
+        </div>
+        <div class="card">
+          <div class="field"><label>Testo di riferimento da confrontare (facoltativo)</label>
+            <textarea id="origRef" rows="4" spellcheck="false" placeholder="Incolla qui una fonte o una bozza precedente da confrontare…"></textarea>
+          </div>
+          <button class="btn btn--outlined" id="origScanRef" style="width:100%">${icon("compare")}Confronta anche con questo testo</button>
+        </div>
+      </div>
+      <div id="aiPane-rewrite" class="ai-pane" hidden>
+        ${this.sectionHead("auto_fix_high", "Riscrittore", "local")}
+        <p class="intro">Riscrittura <b>locale basata su regole</b>: rimuove i cliché da LLM, varia il ritmo, semplifica o formalizza. Offline.</p>
+        <div class="card">
           ${segmented("aiMode", [["humanize", "Umanizza"], ["simplify", "Semplifica"], ["formal", "Formale"]], "humanize")}
-          <button class="btn btn--tonal" id="aiRewrite" style="width:100%">${icon("autorenew")}Riscrivi il testo</button>
+          <div style="height:14px"></div>
+          <button class="btn btn--filled" id="aiRewrite" style="width:100%">${icon("autorenew")}Riscrivi il testo</button>
           <div id="aiRewriteWrap" style="display:none">
             <div class="field"><label>Risultato</label><textarea id="aiRewriteOut" rows="8" spellcheck="false"></textarea></div>
             <div style="display:flex;gap:8px">
-              <button class="btn btn--filled btn--sm" id="aiApply">${icon("check")}Applica al documento</button>
-              <button class="btn btn--outlined btn--sm" id="aiCopy">${icon("content_copy")}Copia</button>
+              <button class="btn btn--tonal btn--sm" id="aiApply">${icon("check")}Applica al documento</button>
+              <button class="btn btn--text btn--sm" id="aiCopy">${icon("content_copy")}Copia</button>
             </div>
           </div>
-          <p class="help">Riscrittura <b>locale basata su regole</b>: rimuove i cliché da LLM, varia il ritmo, semplifica o formalizza. Offline.</p>
+        </div>
+      </div>
+      <div id="aiPane-para" class="ai-pane" hidden>
+        ${this.sectionHead("shuffle", "Riformulatore", "local")}
+        <p class="intro">Motore <b>proprietario e locale</b> (nessuna rete, nessun servizio esterno): varia lessico e sintassi mantenendo
+          invariati numeri, citazioni, nomi propri e link. Non è uno strumento per falsificare l'autorialità di un testo: usalo solo
+          su contenuti propri e nel rispetto dei regolamenti scolastici, professionali o contrattuali applicabili.</p>
+        <div class="card">
+          ${sliderRow("Varietà lessicale (sinonimi)", "paraLex", 0, 100, 5, 50, "%")}
+          ${sliderRow("Varietà strutturale (connettivi, ordine, ritmo)", "paraStruct", 0, 100, 5, 50, "%")}
+          <div class="field">
+            <label>Termini da non toccare (nomi, sigle, glossario tecnico)</label>
+            <input type="text" id="paraGlossary" placeholder="es. Typographus, HWID, Nexflamma (separati da virgola)">
+          </div>
+          <button class="btn btn--filled" id="paraRun" style="width:100%;margin-top:14px">${icon("auto_awesome")}Riformula il testo</button>
+          <div id="paraWrap" style="display:none">
+            <div class="field"><label>Risultato</label><textarea id="paraOut" rows="8" spellcheck="false"></textarea></div>
+            <div id="paraMeta"></div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button class="btn btn--tonal btn--sm" id="paraApply">${icon("check")}Applica al documento</button>
+              <button class="btn btn--outlined btn--sm" id="paraAgain">${icon("refresh")}Un'altra variante</button>
+              <button class="btn btn--text btn--sm" id="paraCopy">${icon("content_copy")}Copia</button>
+            </div>
+          </div>
         </div>
       </div>`;
   }
   bindAI() {
+    /* ---- schede: un solo strumento visibile alla volta ---- */
+    const AI_TABS = ["detect", "orig", "rewrite", "para"];
+    bindSegmented("aiTab", (v) => {
+      AI_TABS.forEach((t) => (byId(`aiPane-${t}`).hidden = t !== v));
+    });
+
+    /* ---- verifica di originalità (locale: shingling + Jaccard, [[typographus-architecture]]) ---- */
+    const origResult = byId("origResult");
+    const renderOriginality = (report: ReturnType<typeof checkOriginality>) => {
+      if (!report.reliable) {
+        origResult.innerHTML = `<div class="ai-note">${icon("info", "sm")}<span>Testo troppo breve per un confronto affidabile.</span></div>`;
+        return;
+      }
+      if (!report.matches.length) {
+        origResult.innerHTML = `<div class="ai-verdict ok">${icon("check_circle", "sm")}<span>Nessuna sovrapposizione rilevante trovata (${report.comparedAgainst} testi confrontati). Originalità stimata <b>${report.originality}%</b>.</span></div>`;
+        return;
+      }
+      origResult.innerHTML = `
+        <div class="ai-verdict ${report.originality < 70 ? "warn" : "ok"}">${icon(report.originality < 70 ? "report" : "check_circle", "sm")}<span>Originalità stimata <b>${report.originality}%</b> su ${report.comparedAgainst} testi confrontati.</span></div>
+        <div class="ai-signals">
+          ${report.matches
+            .slice(0, 5)
+            .map(
+              (m) => `<div class="ai-sig">
+                <div class="ai-sig-top"><span>${escapeHtml(m.title)}</span><b>${m.similarity}%</b></div>
+                <div class="ai-sig-bar"><i style="width:${m.similarity}%"></i></div>
+                ${m.samples.length ? `<span class="ai-sig-d">Frammento in comune: “${escapeHtml(m.samples[0])}…”</span>` : ""}
+              </div>`
+            )
+            .join("")}
+        </div>`;
+    };
+    byId("origScan").onclick = () => {
+      const current = toPlainText(this.store.state.source);
+      const corpus = listLibrary()
+        .filter((d) => d.id !== this.store.state.id)
+        .map((d) => ({ id: d.id, title: d.title || "Senza titolo", text: toPlainText(d.source) }));
+      renderOriginality(checkOriginality(current, corpus));
+    };
+    byId("origScanRef").onclick = () => {
+      const refText = byId<HTMLTextAreaElement>("origRef").value;
+      if (!refText.trim()) {
+        snackbar("Incolla prima un testo di riferimento.");
+        return;
+      }
+      const current = toPlainText(this.store.state.source);
+      const corpus = [
+        { id: "__ref__", title: "Testo di riferimento incollato", text: refText },
+        ...listLibrary()
+          .filter((d) => d.id !== this.store.state.id)
+          .map((d) => ({ id: d.id, title: d.title || "Senza titolo", text: toPlainText(d.source) })),
+      ];
+      renderOriginality(checkOriginality(current, corpus));
+    };
+
     byId("aiAnalyze").onclick = () => {
       const res = detectAI(toPlainText(this.store.state.source), this.prefs.language);
       const host = byId("aiResult");
@@ -1183,6 +2487,63 @@ class App {
     byId("aiCopy").onclick = async () => {
       try {
         await navigator.clipboard.writeText(byId<HTMLTextAreaElement>("aiRewriteOut").value);
+        snackbar("Copiato negli appunti.");
+      } catch {
+        snackbar("Copia non riuscita.");
+      }
+    };
+
+    /* ---- riformulatore (motore proprietario src/paraphraser.ts) ---- */
+    const lexInput = byId<HTMLInputElement>("paraLex");
+    const structInput = byId<HTMLInputElement>("paraStruct");
+    lexInput.oninput = () => (byId("paraLex-v").textContent = `${lexInput.value}%`);
+    structInput.oninput = () => (byId("paraStruct-v").textContent = `${structInput.value}%`);
+
+    const runParaphrase = (seed?: number) => {
+      const glossary = byId<HTMLInputElement>("paraGlossary").value
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean);
+      const res = paraphrase(this.store.state.source, {
+        lexicalIntensity: Number(lexInput.value) / 100,
+        structuralIntensity: Number(structInput.value) / 100,
+        lang: this.prefs.language,
+        protectTerms: glossary,
+        seed,
+      });
+      byId("paraWrap").style.display = "block";
+      byId<HTMLTextAreaElement>("paraOut").value = res.text;
+      const simPct = Math.round(res.similarity * 100);
+      const changedPct = Math.round(res.changedRatio * 100);
+      byId("paraMeta").innerHTML = `
+        <div class="ai-sig">
+          <div class="ai-sig-top"><span>Somiglianza col testo originale</span><b>${simPct}%</b></div>
+          <div class="ai-sig-bar"><i style="width:${simPct}%"></i></div>
+          <span class="ai-sig-d">Sovrapposizione delle parole di contenuto (nomi, numeri e citazioni sempre esclusi da qualunque modifica).</span>
+        </div>
+        <div class="ai-sig">
+          <div class="ai-sig-top"><span>Parole e connettivi variati</span><b>${changedPct}%</b></div>
+          <div class="ai-sig-bar"><i style="width:${changedPct}%"></i></div>
+        </div>
+        ${
+          res.warnings.length
+            ? `<div class="ai-note">${icon("warning", "sm")}<span>${escapeHtml(res.warnings.join(" "))}</span></div>`
+            : ""
+        }`;
+      return res;
+    };
+
+    byId("paraRun").onclick = () => runParaphrase();
+    byId("paraAgain").onclick = () => runParaphrase(Date.now());
+    byId("paraApply").onclick = () => {
+      const out = byId<HTMLTextAreaElement>("paraOut").value;
+      if (!out.trim()) return;
+      this.commitSource(out);
+      snackbar("Testo riformulato applicato al documento.");
+    };
+    byId("paraCopy").onclick = async () => {
+      try {
+        await navigator.clipboard.writeText(byId<HTMLTextAreaElement>("paraOut").value);
         snackbar("Copiato negli appunti.");
       } catch {
         snackbar("Copia non riuscita.");
@@ -1368,6 +2729,20 @@ class App {
         <button class="btn btn--outlined" id="htmlBtn" style="width:100%">${icon("download")}Esporta HTML autonomo</button>
       </div>
       <div class="section">
+        <h3>${icon("cloud_upload", "sm")} Condividi e Pubblica</h3>
+        <div class="stack">
+          <p class="help">Pubblica temporaneamente il documento standalone online per condividerlo o leggerlo nel browser.</p>
+          <button class="btn btn--tonal" id="shareBtn" style="width:100%">${icon("share")}Pubblica online</button>
+          <div id="shareResult" style="display:none;margin-top:10px;flex-direction:column;gap:8px" class="stack">
+            <div style="display:flex;gap:6px">
+              <input id="shareLink" type="text" readonly style="flex:1;background:var(--md-surface-container-high);border:1px solid var(--hairline);border-radius:var(--r-sm);padding:6px;font-size:12px;color:var(--md-on-surface)">
+              <button class="btn btn--filled btn--sm" id="copyShareBtn" style="padding:0 8px;height:28px">${icon("content_copy", "sm")}</button>
+            </div>
+            <p class="help" style="color:var(--accent);font-weight:600;margin:0">Il link è pronto! Chiunque lo scaricherà vedrà il tuo impaginato.</p>
+          </div>
+        </div>
+      </div>
+      <div class="section">
         <h3>${icon("toc", "sm")} Indice generale</h3>
         <div id="tocPreview"></div>
       </div>`;
@@ -1376,7 +2751,8 @@ class App {
     bindSelect("icc", (v) => this.store.setSetting("iccProfile", v));
     bindSwitch("cmykExp", (c) => {
       this.store.setSetting("cmykPreview", c);
-      byId("cmykQuick").classList.toggle("is-active", c);
+      const el = byId("cmykQuick");
+      if (el) el.classList.toggle("is-active", c);
       this.updateCmyk();
     });
     byId("pdfBtn").onclick = async () => {
@@ -1404,6 +2780,47 @@ class App {
       downloadBlob(new Blob([html], { type: "text/html" }), `${slugFile(this.store.state.title)}.html`);
       snackbar("HTML esportato.");
     };
+    
+    byId("shareBtn").onclick = async () => {
+      const btn = byId("shareBtn") as HTMLButtonElement;
+      const originalHtml = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = `${icon("sync")} Caricamento...`;
+      try {
+        const compiled = this.compileDoc();
+        const html = buildStandaloneHtml(this.store.state, compiled.html);
+        const blob = new Blob([html], { type: "text/html" });
+        const formData = new FormData();
+        formData.append("file", blob, `${slugFile(this.store.state.title)}.html`);
+        const res = await fetch("https://file.io/?expires=1w", {
+          method: "POST",
+          body: formData
+        });
+        if (!res.ok) throw new Error("Upload non riuscito");
+        const data = await res.json();
+        if (data.success && data.link) {
+          byId("shareResult").style.display = "flex";
+          byId<HTMLInputElement>("shareLink").value = data.link;
+          snackbar("Pubblicato online con successo!");
+        } else {
+          throw new Error(data.message || "Upload fallito");
+        }
+      } catch (err) {
+        snackbar(`Errore durante l'upload: ${(err as Error).message}`);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
+      }
+    };
+    
+    byId("copyShareBtn").onclick = async () => {
+      const link = byId<HTMLInputElement>("shareLink").value;
+      if (link) {
+        await navigator.clipboard.writeText(link);
+        snackbar("Link copiato negli appunti.");
+      }
+    };
+
     this.renderTocPreview();
   }
   renderTocPreview() {
@@ -1429,6 +2846,87 @@ class App {
   /* ============================ HOME ============================ */
   homeScreen(): string {
     const lib = listLibrary();
+    const totalDocs = lib.length;
+    let totalWords = 0;
+    lib.forEach(d => {
+      totalWords += analyze(toPlainText(d.source), this.prefs.language).words;
+    });
+
+    let activeTemplates: (Template | CommunityTemplate)[] = [];
+    let isCommunity = false;
+
+    if (this.homeTab === "registi") {
+      activeTemplates = TEMPLATES.filter((t) => ["screenplay", "poetry"].includes(t.id));
+    } else if (this.homeTab === "tesisti") {
+      activeTemplates = TEMPLATES.filter((t) => ["thesis", "essay", "technical"].includes(t.id));
+    } else if (this.homeTab === "editoriali") {
+      activeTemplates = TEMPLATES.filter((t) => ["novel", "article", "magazine", "newsletter", "press"].includes(t.id));
+    } else if (this.homeTab === "altri") {
+      activeTemplates = TEMPLATES.filter((t) => ["blank", "report", "menu", "letter", "brochure", "cv", "recipe"].includes(t.id));
+    } else if (this.homeTab === "community") {
+      const localComm = getCommunityTemplates();
+      const onlineComm = this.onlineTemplates || [];
+      const combined = [...localComm];
+      for (const t of onlineComm) {
+        if (!combined.some((x) => x.id === t.id)) {
+          combined.push(t);
+        }
+      }
+      activeTemplates = combined;
+      isCommunity = true;
+    }
+
+    let currentUserHandle = "@tu";
+    if (this.supabaseUser && this.supabaseUser.email) {
+      const email = this.supabaseUser.email;
+      currentUserHandle = email.startsWith("@") ? email : "@" + email.split("@")[0];
+    } else if (this.licenseStatus?.valid && this.licenseStatus?.email) {
+      const email = this.licenseStatus.email;
+      currentUserHandle = email.startsWith("@") ? email : "@" + email.split("@")[0];
+    }
+
+    const tplGridHtml = activeTemplates.map((t) => {
+      const authorText = (t as any).author ? `<span class="tpl-author">Caricato da ${(t as any).author}</span>` : "";
+      let borderLeft = "";
+      if (t.id === "blank") borderLeft = "border-left: 3px solid #b9b9b3;";
+      else if (t.id === "article") borderLeft = "border-left: 3px solid var(--accent);";
+      else if (t.id === "essay") borderLeft = "border-left: 3px solid #38bdf8;";
+      else if (t.id === "magazine") borderLeft = "border-left: 3px solid #e879f9;";
+      else if (t.id === "novel") borderLeft = "border-left: 3px solid #34d399;";
+      else if (t.id === "cv") borderLeft = "border-left: 3px solid #f5a524;";
+      else if (t.id === "report") borderLeft = "border-left: 3px solid #f43f5e;";
+      else if (t.id === "technical") borderLeft = "border-left: 3px solid #8b5cf6;";
+      else if (t.id === "menu") borderLeft = "border-left: 3px solid #10b981;";
+      else if (t.id === "screenplay") borderLeft = "border-left: 3px solid #f59e0b;";
+      else if (t.id === "poetry") borderLeft = "border-left: 3px solid #ec4899;";
+      else if (t.id.startsWith("comm-") || t.id.startsWith("comm_")) borderLeft = "border-left: 3px solid var(--accent);";
+
+      const isComm = t.id.startsWith("comm-") || t.id.startsWith("comm_");
+      const isAuthor = (t as any).author === "@tu" || (t as any).author === currentUserHandle;
+      const isAdmin = this.licenseStatus?.plan?.toLowerCase() === "admin" || this.supabaseProfile?.role === "admin";
+      const canDelete = isComm && (isAdmin || isAuthor);
+      const delBtn = canDelete ? `<button class="tpl-del icon-btn btn--sm" data-del-tpl="${t.id}" data-tip="Rimuovi modello">${icon("delete", "sm")}</button>` : "";
+
+      return `<div class="tpl-card-wrapper">
+        <button class="tpl-card" data-tpl="${t.id}" style="${borderLeft}">
+          <span class="tpl-ic">${icon(t.icon)}</span>
+          <b>${escapeHtml(t.name)}</b>
+          <span class="tpl-desc">${escapeHtml(t.desc)}</span>
+          ${authorText}
+        </button>
+        ${delBtn}
+      </div>`;
+    }).join("");
+
+    let communityHeader = "";
+    if (isCommunity) {
+      communityHeader = `
+        <div class="community-header">
+          <p class="help">Modelli creati e condivisi dagli utenti del mondo per registi, tesisti ed editoriali.</p>
+        </div>
+      `;
+    }
+    
     return `
     <div class="home">
       <header class="home-hero">
@@ -1443,16 +2941,30 @@ class App {
         </div>
       </header>
 
+      <div class="home-stats">
+        <div class="home-stat-chip">${icon("folder", "sm")} <b>${totalDocs}</b> &nbsp;documenti salvati</div>
+        <div class="home-stat-chip">${icon("edit", "sm")} <b>${totalWords.toLocaleString("it")}</b> &nbsp;parole scritte totali</div>
+      </div>
+
       <section class="home-sec">
-        <h2>${icon("dashboard_customize", "sm")} Inizia da un modello</h2>
+        <div class="tpl-section-header">
+          <h2>${icon("dashboard_customize", "sm")} Modelli di scrittura</h2>
+          <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+            <div class="tpl-tabs segmented">
+              <button class="tab-btn ${this.homeTab === 'registi' ? 'is-active' : ''}" data-tab="registi">${icon("movie", "sm")} <span>Registi</span></button>
+              <button class="tab-btn ${this.homeTab === 'tesisti' ? 'is-active' : ''}" data-tab="tesisti">${icon("school", "sm")} <span>Tesisti</span></button>
+              <button class="tab-btn ${this.homeTab === 'editoriali' ? 'is-active' : ''}" data-tab="editoriali">${icon("auto_stories", "sm")} <span>Editoriali</span></button>
+              <button class="tab-btn ${this.homeTab === 'community' ? 'is-active' : ''}" data-tab="community">${icon("public", "sm")} <span>Mondo</span></button>
+              <button class="tab-btn ${this.homeTab === 'altri' ? 'is-active' : ''}" data-tab="altri">${icon("more_horiz", "sm")} <span>Altri</span></button>
+            </div>
+            <button class="btn btn--tonal btn--sm" id="homePublishTplBtn" data-tip="Crea e pubblica un modello">${icon("cloud_upload")} Pubblica nel Mondo</button>
+          </div>
+        </div>
+
+        ${communityHeader}
+
         <div class="tpl-grid">
-          ${TEMPLATES.map(
-            (t) => `<button class="tpl-card" data-tpl="${t.id}">
-              <span class="tpl-ic">${icon(t.icon)}</span>
-              <b>${escapeHtml(t.name)}</b>
-              <span class="tpl-desc">${escapeHtml(t.desc)}</span>
-            </button>`
-          ).join("")}
+          ${tplGridHtml || `<div class="empty-state" style="grid-column: 1/-1; border: 1px dashed var(--hairline); padding: 32px; text-align: center; border-radius: var(--r-md);">${icon("folder_open")} <b>Nessun modello condiviso</b></div>`}
         </div>
       </section>
 
@@ -1488,10 +3000,52 @@ class App {
     byId("homeNewBlank").onclick = () => this.newFromTemplate(TEMPLATES[0]);
     byId("homeImport").onclick = () => this.fileInput.click();
     byId("homeSettings").onclick = () => this.goScreen("settings");
+
+    this.screenRoot.querySelectorAll<HTMLElement>(".tpl-tabs button").forEach((btn) => {
+      btn.onclick = async () => {
+        this.homeTab = btn.dataset.tab!;
+        if (this.homeTab === "community") {
+          await this.loadOnlineTemplates();
+        }
+        this.screenRoot.innerHTML = this.homeScreen();
+        this.bindHome();
+      };
+    });
+
+    const homePubBtn = byId("homePublishTplBtn");
+    if (homePubBtn) {
+      homePubBtn.onclick = () => this.openPublishModal();
+    }
+
     this.screenRoot.querySelectorAll<HTMLElement>(".tpl-card").forEach((c) => {
       c.onclick = () => {
-        const t = TEMPLATES.find((x) => x.id === c.dataset.tpl);
+        const tplId = c.dataset.tpl!;
+        let t: Template | CommunityTemplate | undefined;
+        if (tplId.startsWith("comm-")) {
+          t = getCommunityTemplates().find((x) => x.id === tplId) || this.onlineTemplates.find((x) => x.id === tplId);
+        } else {
+          t = TEMPLATES.find((x) => x.id === tplId);
+        }
         if (t) this.newFromTemplate(t);
+      };
+    });
+    this.screenRoot.querySelectorAll<HTMLElement>("[data-del-tpl]").forEach((b) => {
+      b.onclick = async (e) => {
+        e.stopPropagation();
+        const tplId = b.dataset.delTpl!;
+        try {
+          const { error } = await supabase.from("community_templates").delete().eq("id", tplId);
+          if (error) {
+            console.error("Errore cancellazione online Supabase:", error);
+          }
+        } catch (err) {
+          console.error(err);
+        }
+        deleteCommunityTemplate(tplId);
+        await this.loadOnlineTemplates();
+        this.screenRoot.innerHTML = this.homeScreen();
+        this.bindHome();
+        snackbar("Modello rimosso.");
       };
     });
     this.screenRoot.querySelectorAll<HTMLElement>(".recent-card").forEach((c) => {
@@ -1510,6 +3064,170 @@ class App {
     });
   }
 
+  openPublishModal() {
+    const old = document.getElementById("publishScrim");
+    if (old) old.remove();
+
+    const lib = listLibrary();
+    const docOptionsHtml = lib.map(d => `<option value="${d.id}">${escapeHtml(d.title || "Senza titolo")}</option>`).join("");
+
+    const scrim = document.createElement("div");
+    scrim.className = "scrim";
+    scrim.id = "publishScrim";
+    scrim.innerHTML = `
+      <div class="dialog md-help-dialog" role="dialog" aria-modal="true" style="max-width:500px">
+        <div class="lic-head">
+          <div class="vendor-logo sm" style="background:var(--accent-dim);color:var(--accent)">${icon("public")}</div>
+          <div>
+            <h2>Pubblica modello nel Mondo</h2>
+            <p class="help" style="margin:2px 0 0">Condividi la tua struttura con registi, tesisti ed editoriali.</p>
+          </div>
+        </div>
+        <div class="modal-body stack" style="margin:18px 0">
+          <div class="field">
+            <label for="pubName">Nome del modello</label>
+            <input type="text" id="pubName" placeholder="es. Sceneggiatura Cinema d'Autore">
+          </div>
+          <div class="field">
+            <label for="pubDesc">Descrizione</label>
+            <input type="text" id="pubDesc" placeholder="es. Layout a 1 colonna, Courier 12pt, margini ampi…">
+          </div>
+          <div class="field">
+            <label for="pubCategory">Categoria target</label>
+            <select id="pubCategory">
+              <option value="registi">Registi (Cinema, Teatro, Poesia)</option>
+              <option value="tesisti">Tesisti (Accademia, Saggi)</option>
+              <option value="editoriali">Editoriali (Libri, Giornali, Riviste)</option>
+              <option value="altri">Altri</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="pubIcon">Icona</label>
+            <select id="pubIcon">
+              <option value="theater_comedy">Teatro (Maschere)</option>
+              <option value="movie">Cinema (Ciak)</option>
+              <option value="school">Studio (Cappello accademico)</option>
+              <option value="auto_stories">Romanzo (Libro aperto)</option>
+              <option value="newspaper">Periodico (Giornale)</option>
+              <option value="star">Speciale (Stella)</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="pubSourceDoc">Sorgente dati</label>
+            <select id="pubSourceDoc">
+              <option value="current">Usa documento attualmente aperto</option>
+              ${docOptionsHtml}
+            </select>
+            <p class="help">Il testo di partenza e le impostazioni del layout saranno copiate da questo documento.</p>
+          </div>
+        </div>
+        <div class="dialog-actions">
+          <button class="btn btn--text" id="pubCancel">Annulla</button>
+          <button class="btn btn--filled" id="pubSubmit">${icon("cloud_upload", "sm")} Pubblica nel Mondo</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(scrim);
+    requestAnimationFrame(() => scrim.classList.add("is-open"));
+
+    const close = () => {
+      scrim.classList.remove("is-open");
+      setTimeout(() => scrim.remove(), 220);
+    };
+
+    scrim.addEventListener("click", (e) => {
+      if (e.target === scrim) close();
+    });
+
+    byId("pubCancel").onclick = close;
+    byId("pubSubmit").onclick = () => {
+      const name = byId<HTMLInputElement>("pubName").value.trim();
+      const desc = byId<HTMLInputElement>("pubDesc").value.trim();
+      const category = byId<HTMLSelectElement>("pubCategory").value;
+      const iconName = byId<HTMLSelectElement>("pubIcon").value;
+      const sourceDocId = byId<HTMLSelectElement>("pubSourceDoc").value;
+
+      if (!name) {
+        snackbar("Attenzione: inserisci un nome per il modello.");
+        return;
+      }
+
+      let sourceText = "Inizia a scrivere qui…";
+      let sourceSettings = {};
+      let sourceFront = {};
+
+      if (sourceDocId === "current" && this.store.state) {
+        sourceText = this.store.state.source;
+        sourceSettings = { ...this.store.state.settings };
+        sourceFront = { ...this.store.state.front };
+      } else {
+        const found = getFromLibrary(sourceDocId);
+        if (found) {
+          sourceText = found.source;
+          sourceSettings = { ...found.settings };
+          sourceFront = { ...found.front };
+        }
+      }
+
+      let author = "@tu";
+      if (this.supabaseUser && this.supabaseUser.email) {
+        const email = this.supabaseUser.email;
+        author = email.startsWith("@") ? email : "@" + email.split("@")[0];
+      } else if (this.licenseStatus?.valid && this.licenseStatus?.email) {
+        const email = this.licenseStatus.email;
+        author = email.startsWith("@") ? email : "@" + email.split("@")[0];
+      }
+
+      const newTpl: CommunityTemplate = {
+        id: "comm-" + Date.now().toString(36),
+        name,
+        desc: desc || "Modello condiviso",
+        icon: iconName,
+        front: sourceFront,
+        source: sourceText,
+        settings: sourceSettings,
+        author
+      };
+
+      saveCommunityTemplate(newTpl);
+      
+      const userId = this.supabaseUser?.id || null;
+      supabase
+        .from("community_templates")
+        .insert([{
+          id: newTpl.id,
+          name: newTpl.name,
+          desc: newTpl.desc,
+          icon: newTpl.icon,
+          front: newTpl.front,
+          source: newTpl.source,
+          settings: newTpl.settings,
+          author,
+          user_id: userId
+        }])
+        .then(async ({ error }) => {
+          if (error) {
+            console.error("Errore salvataggio online Supabase:", error);
+          } else {
+            await this.loadOnlineTemplates();
+            if (this.screen === "home" && this.homeTab === "community") {
+              this.screenRoot.innerHTML = this.homeScreen();
+              this.bindHome();
+            }
+          }
+        });
+
+      close();
+      snackbar("Modello condiviso con successo nel Mondo!");
+
+      if (this.screen === "home") {
+        this.homeTab = "community";
+        this.screenRoot.innerHTML = this.homeScreen();
+        this.bindHome();
+      }
+    };
+  }
+
   /* ============================ SETTINGS ============================ */
   settingsScreen(): string {
     const cats: [string, string, string][] = [
@@ -1517,6 +3235,7 @@ class App {
       ["editor", "edit_note", "Editor"],
       ["lingua", "translate", "Lingua"],
       ["nuovi", "note_add", "Nuovi documenti"],
+      ["account", "account_circle", "Account Nexflamma"],
       ["licenza", "verified_user", "Licenza"],
       ["info", "info", "Informazioni"],
     ];
@@ -1566,6 +3285,8 @@ class App {
           ${sliderRow("Dimensione font sorgente", "setEdSize", 11, 18, 0.5, p.editorFontSize, " px")}
           <div class="opt-row"><div class="opt-label"><b>A capo automatico</b><span>Manda a capo le righe lunghe</span></div>
             <label class="switch"><input type="checkbox" id="setWrap" ${p.wordWrap ? "checked" : ""}><span class="track"><span class="thumb"></span></span></label></div>
+          <div class="opt-row"><div class="opt-label"><b>Salvataggio automatico</b><span>Salva le modifiche in locale mentre digiti</span></div>
+            <label class="switch"><input type="checkbox" id="setAutosave" ${p.autosave ? "checked" : ""}><span class="track"><span class="thumb"></span></span></label></div>
         </div>`;
       case "lingua":
         return `<div class="set-card">
@@ -1580,6 +3301,43 @@ class App {
           ${fieldSelect("Formato pagina", "setDefPage", [["A3", "A3"], ["A4", "A4"], ["A5", "A5"], ["Letter", "US Letter"], ["Tabloid", "Tabloid"]], p.defPageSize)}
           ${sliderRow("Corpo del testo", "setDefBody", 8, 14, 0.25, p.defBodySize, " pt")}
           ${sliderRow("Interlinea", "setDefLead", 1.0, 2.0, 0.05, p.defLeading, "×")}
+        </div>`;
+      case "account":
+        if (this.supabaseUser) {
+          const email = this.supabaseUser.email;
+          const roleLabel = this.supabaseProfile?.role === "admin" ? "Amministratore" : "Utente standard";
+          const handle = email.startsWith("@") ? email : "@" + email.split("@")[0];
+          return `<div class="set-card">
+            <h3>${icon("account_circle", "sm")} Account Nexflamma</h3>
+            <div class="lic-stat" style="margin-bottom: 14px;">
+              <span class="status-chip" data-status="published">Collegato</span>
+              <div class="lic-stat-meta">
+                <b>${escapeHtml(email)}</b>
+                <span>Ruolo: ${roleLabel}</span>
+              </div>
+            </div>
+            <div class="lg-hwid" style="margin-bottom: 18px;">
+              <div><span>Identità Autore</span><b>${escapeHtml(handle)}</b></div>
+            </div>
+            <p class="help" style="margin-bottom:14px">I tuoi modelli verranno pubblicati a questo nome e potrai cancellarli online con lo stesso account.</p>
+            <button class="btn btn--outlined btn--sm" id="btnAccLogout">${icon("logout")} Disconnetti account</button>
+          </div>`;
+        }
+        return `<div class="set-card">
+          <h3>${icon("account_circle", "sm")} Accedi a Nexflamma</h3>
+          <p class="help" style="margin-bottom:14px">Usa le tue credenziali Nexflamma per connettere l'applicazione e pubblicare i modelli online.</p>
+          <div class="stack">
+            <div class="field">
+              <label for="accEmail">Email</label>
+              <input type="email" id="accEmail" placeholder="latuaemail@esempio.com">
+            </div>
+            <div class="field">
+              <label for="accPassword">Password</label>
+              <input type="password" id="accPassword" placeholder="••••••••">
+            </div>
+            <button class="btn btn--filled" id="btnAccLogin" style="margin-top:10px">${icon("login")} Accedi con Nexflamma</button>
+            <div class="lg-msg" id="accMsg" style="margin-top:10px"></div>
+          </div>
         </div>`;
       case "licenza":
         return `<div class="set-card">
@@ -1634,6 +3392,7 @@ class App {
     host.innerHTML = this.settingsCatHtml();
     this.bindSettingsControls();
     if (this.settingsCat === "licenza") this.refreshLicensePanel();
+    if (this.settingsCat === "account") this.bindAccountControls();
   }
 
   openLicense() {
@@ -1673,6 +3432,98 @@ class App {
     (scrim.querySelector("#licClose") as HTMLElement).onclick = close;
   }
 
+  openMarkdownHelp() {
+    const old = document.getElementById("mdHelpScrim");
+    if (old) old.remove();
+    const scrim = document.createElement("div");
+    scrim.className = "scrim";
+    scrim.id = "mdHelpScrim";
+    scrim.innerHTML = `
+      <div class="dialog md-help-dialog" role="dialog" aria-modal="true">
+        <div class="lic-head">
+          <div class="vendor-logo sm" style="background:var(--accent-dim);color:var(--accent)">${icon("help_outline")}</div>
+          <div>
+            <h2>Guida alla Scrittura (Markdown)</h2>
+            <p class="help" style="margin:2px 0 0">Usa questi formati nel testo per impaginare automaticamente.</p>
+          </div>
+        </div>
+        <div class="lic-body" style="max-height:360px;overflow-y:auto;padding-right:8px;display:flex;flex-direction:column;gap:12px;margin:16px 0">
+          <div style="border-bottom:1px solid var(--hairline);padding-bottom:10px">
+            <h4 style="margin:0 0 6px">Titoli di sezione</h4>
+            <div style="display:flex;justify-content:space-between;align-items:center;background:var(--md-surface-container-high);padding:8px 12px;border-radius:var(--r-sm)">
+              <code>## Titolo di Sezione</code>
+              <button class="btn btn--text btn--sm" data-ins="title">Inserisci</button>
+            </div>
+          </div>
+          <div style="border-bottom:1px solid var(--hairline);padding-bottom:10px">
+            <h4 style="margin:0 0 6px">Enfasi e stili</h4>
+            <div style="display:flex;flex-direction:column;gap:6px">
+              <div style="display:flex;justify-content:space-between;align-items:center;background:var(--md-surface-container-high);padding:6px 12px;border-radius:var(--r-sm)">
+                <span><b>Grassetto:</b> <code>**testo**</code></span>
+                <button class="btn btn--text btn--sm" data-ins="format_bold">Inserisci</button>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:center;background:var(--md-surface-container-high);padding:6px 12px;border-radius:var(--r-sm)">
+                <span><i>Corsivo:</i> <code>_testo_</code></span>
+                <button class="btn btn--text btn--sm" data-ins="format_italic">Inserisci</button>
+              </div>
+            </div>
+          </div>
+          <div style="border-bottom:1px solid var(--hairline);padding-bottom:10px">
+            <h4 style="margin:0 0 6px">Citazioni e frasi in evidenza</h4>
+            <div style="display:flex;flex-direction:column;gap:6px">
+              <div style="display:flex;justify-content:space-between;align-items:center;background:var(--md-surface-container-high);padding:6px 12px;border-radius:var(--r-sm)">
+                <span>Citazione normale: <code>> testo</code></span>
+                <button class="btn btn--text btn--sm" data-ins="format_quote">Inserisci</button>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:center;background:var(--md-surface-container-high);padding:6px 12px;border-radius:var(--r-sm)">
+                <span>Citazione in evidenza (Pullquote)</span>
+                <button class="btn btn--text btn--sm" data-ins="format_size">Inserisci</button>
+              </div>
+            </div>
+          </div>
+          <div style="border-bottom:1px solid var(--hairline);padding-bottom:10px">
+            <h4 style="margin:0 0 6px">Elementi speciali</h4>
+            <div style="display:flex;flex-direction:column;gap:6px">
+              <div style="display:flex;justify-content:space-between;align-items:center;background:var(--md-surface-container-high);padding:6px 12px;border-radius:var(--r-sm)">
+                <span>Immagine: <code>![descr](url)</code></span>
+                <button class="btn btn--text btn--sm" data-ins="image">Inserisci</button>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:center;background:var(--md-surface-container-high);padding:6px 12px;border-radius:var(--r-sm)">
+                <span>Nota a piè pagina: <code>[^1]</code></span>
+                <button class="btn btn--text btn--sm" data-ins="superscript">Inserisci</button>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:center;background:var(--md-surface-container-high);padding:6px 12px;border-radius:var(--r-sm)">
+                <span>Link internet: <code>[testo](url)</code></span>
+                <button class="btn btn--text btn--sm" data-ins="link">Inserisci</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="dialog-actions">
+          <button class="btn btn--filled" id="mdHelpClose">Ho capito</button>
+        </div>
+      </div>`;
+    document.body.appendChild(scrim);
+    requestAnimationFrame(() => scrim.classList.add("is-open"));
+    const close = () => {
+      scrim.classList.remove("is-open");
+      setTimeout(() => scrim.remove(), 220);
+    };
+    scrim.addEventListener("click", (e) => {
+      if (e.target === scrim) close();
+    });
+    byId("mdHelpClose").onclick = close;
+    scrim.querySelectorAll<HTMLElement>("[data-ins]").forEach((b) => {
+      b.onclick = () => {
+        const ed = byId<HTMLTextAreaElement>("editor");
+        if (ed) {
+          this.applyMd(b.dataset.ins!, ed);
+        }
+        close();
+      };
+    });
+  }
+
   bindSettings() {
     byId("setBack").onclick = () => this.goScreen("home");
     this.screenRoot.querySelectorAll<HTMLElement>(".set-nav-item").forEach((b) => {
@@ -1710,6 +3561,10 @@ class App {
     }, " px");
     bindSwitch("setWrap", (c) => {
       this.prefs.wordWrap = c;
+      this.commitPrefs();
+    });
+    bindSwitch("setAutosave", (c) => {
+      this.prefs.autosave = c;
       this.commitPrefs();
     });
     bindSegmented("setLang", (v) => {
@@ -1785,6 +3640,68 @@ class App {
     };
   }
 
+  bindAccountControls() {
+    const loginBtn = document.getElementById("btnAccLogin");
+    const logoutBtn = document.getElementById("btnAccLogout");
+    const msg = document.getElementById("accMsg");
+
+    if (loginBtn) {
+      loginBtn.onclick = async () => {
+        const email = byId<HTMLInputElement>("accEmail").value.trim();
+        const password = byId<HTMLInputElement>("accPassword").value.trim();
+
+        if (!email || !password) {
+          if (msg) {
+            msg.textContent = "Inserisci email e password.";
+            msg.className = "lg-msg err";
+          }
+          return;
+        }
+
+        if (msg) {
+          msg.textContent = "Connessione in corso…";
+          msg.className = "lg-msg";
+        }
+
+        try {
+          const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+          if (error) throw error;
+
+          this.supabaseUser = data.user;
+
+          const { data: profile } = await supabase
+            .from("profiles")
+            .select("*")
+            .eq("id", data.user.id)
+            .single();
+          this.supabaseProfile = profile;
+
+          snackbar("Collegato con successo a Nexflamma!");
+          this.renderSettingsCat();
+        } catch (err: any) {
+          if (msg) {
+            msg.textContent = "Errore di accesso: " + err.message;
+            msg.className = "lg-msg err";
+          }
+        }
+      };
+    }
+
+    if (logoutBtn) {
+      logoutBtn.onclick = async () => {
+        try {
+          await supabase.auth.signOut();
+          this.supabaseUser = null;
+          this.supabaseProfile = null;
+          snackbar("Disconnesso con successo.");
+          this.renderSettingsCat();
+        } catch (err: any) {
+          snackbar("Errore durante la disconnessione: " + err.message);
+        }
+      };
+    }
+  }
+
   async refreshLicensePanel() {
     const host = document.getElementById("licStatus");
     if (!host) return;
@@ -1793,15 +3710,23 @@ class App {
       return;
     }
     const st = await desktop.license.status();
+    this.licenseStatus = st;
     const cls = st.valid ? "published" : st.message.includes("scaduta") ? "review" : "draft";
     const label = st.valid ? "Attiva" : st.message.includes("scaduta") ? "Scaduta" : "Non attiva";
+    const authorHandle = st.email ? (st.email.startsWith("@") ? st.email : "@" + st.email.split("@")[0]) : "@tu";
     host.innerHTML = `
       <div class="lic-stat">
         <span class="status-chip" data-status="${cls}">${label}</span>
         <div class="lic-stat-meta">
           <b>${escapeHtml(st.message)}</b>
-          ${st.plan ? `<span>Piano: ${escapeHtml(st.plan)}</span>` : ""}
+          ${st.plan ? `<span>Piano: ${escapeHtml(st.plan)} (${st.plan.toLowerCase() === "admin" ? "Amministratore" : "Utente Standard"})</span>` : ""}
         </div>
+      </div>
+      <div class="lg-hwid" style="margin-top:12px">
+        <div><span>Account collegato</span><b>${escapeHtml(st.email || "Nessun account (Demo)")}</b></div>
+      </div>
+      <div class="lg-hwid" style="margin-top:4px">
+        <div><span>Identità Autore</span><b>${escapeHtml(authorHandle)}</b></div>
       </div>
       <div class="lg-hwid" style="margin-top:12px">
         <div><span>ID dispositivo (HWID)</span><b>${escapeHtml(st.hwid || "—")}</b></div>
@@ -1907,6 +3832,54 @@ function bindSegmentedActive(id: string, value: string) {
   seg.querySelectorAll<HTMLElement>("button").forEach((b) => {
     b.classList.toggle("is-active", b.dataset.v === value);
   });
+}
+
+function blockHtmlToMd(html: string): string {
+  let s = html;
+  s = s.replace(/<span style="([^"]*)"[^>]*>(.*?)<\/span>/gi, (_m, styleStr, text) => {
+    const styles = styleStr.split(";").map((x) => x.trim()).filter(Boolean);
+    const attrs: string[] = [];
+    for (const st of styles) {
+      const parts = st.split(":");
+      if (parts.length >= 2) {
+        const key = parts[0].trim().toLowerCase();
+        const val = parts.slice(1).join(":").trim();
+        if (key === "color") {
+          attrs.push(`color: ${val}`);
+        } else if (key === "font-family") {
+          let foundFont = val;
+          for (const [fName, fStack] of Object.entries(FONT_STACKS)) {
+            if (fStack.toLowerCase().includes(val.toLowerCase()) || val.toLowerCase().includes(fName.toLowerCase())) {
+              foundFont = fName;
+              break;
+            }
+          }
+          attrs.push(`font: ${foundFont}`);
+        }
+      }
+    }
+    return `[${text}]{${attrs.join("; ")}}`;
+  });
+
+  s = s.replace(/<strong>(.*?)<\/strong>/gi, "**$1**");
+  s = s.replace(/<b>(.*?)<\/b>/gi, "**$1**");
+  s = s.replace(/<em>(.*?)<\/em>/gi, "_$1_");
+  s = s.replace(/<i>(.*?)<\/i>/gi, "_$1_");
+  s = s.replace(/<[^>]+>/g, "");
+  
+  const temp = document.createElement("textarea");
+  temp.innerHTML = s;
+  return temp.value;
+}
+
+function getBlockMd(tagName: string, innerHtml: string): string {
+  const content = blockHtmlToMd(innerHtml);
+  if (tagName === "H2") return `## ${content}`;
+  if (tagName === "H3") return `### ${content}`;
+  if (tagName === "H4") return `#### ${content}`;
+  if (tagName === "BLOCKQUOTE") return `> ${content}`;
+  if (tagName === "LI") return `- ${content}`;
+  return content;
 }
 
 export function startApp(root: HTMLElement) {

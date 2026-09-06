@@ -32,6 +32,16 @@ export interface Settings {
   columnRule: boolean;
 
   /* typography */
+  bodyFont: string;
+  headingFont: string;
+  textColor: string;
+  /* masthead (template parts) styling — empty string = inherit default */
+  headlineFont: string;
+  headlineColor: string;
+  kickerFont: string;
+  kickerColor: string;
+  deckFont: string;
+  deckColor: string;
   bodySize: number;
   leading: number;
   align: "justify" | "left";
@@ -117,7 +127,7 @@ export interface DocState {
 }
 
 /* ----------------------------- App preferences ----------------------------- */
-export type AccentKey = "ice" | "azure" | "emerald" | "amber" | "magenta";
+export type AccentKey = "ink" | "ice" | "azure" | "emerald" | "amber" | "magenta" | "flame";
 
 export interface AppPrefs {
   theme: "dark" | "light";
@@ -126,6 +136,7 @@ export interface AppPrefs {
   editorFontSize: number;
   wordWrap: boolean;
   language: "it" | "en";
+  autosave: boolean;
   /* defaults applied to new documents */
   defPageSize: Settings["pageSize"];
   defBodySize: number;
@@ -133,20 +144,23 @@ export interface AppPrefs {
 }
 
 export const ACCENTS: Record<AccentKey, { name: string; hex: string; strong: string; on: string; rgb: string }> = {
+  ink: { name: "Inchiostro", hex: "#c94f4a", strong: "#a83d39", on: "#fff9f2", rgb: "201, 79, 74" },
   ice: { name: "Blu ghiaccio", hex: "#5ea6ff", strong: "#3d8bff", on: "#051a31", rgb: "94, 166, 255" },
   azure: { name: "Azzurro", hex: "#38bdf8", strong: "#0ea5e9", on: "#04222e", rgb: "56, 189, 248" },
   emerald: { name: "Smeraldo", hex: "#34d399", strong: "#10b981", on: "#04261b", rgb: "52, 211, 153" },
   amber: { name: "Ambra", hex: "#f5a524", strong: "#e08e00", on: "#2a1c00", rgb: "245, 165, 36" },
   magenta: { name: "Magenta", hex: "#e879f9", strong: "#d946ef", on: "#2c0b32", rgb: "232, 121, 249" },
+  flame: { name: "Nexflamma", hex: "#ff5f1f", strong: "#ff3d00", on: "#ffffff", rgb: "255, 95, 31" },
 };
 
 export const defaultPrefs: AppPrefs = {
-  theme: "dark",
-  accent: "ice",
+  theme: "light",
+  accent: "ink",
   density: "cozy",
   editorFontSize: 13.5,
   wordWrap: true,
   language: "it",
+  autosave: true,
   defPageSize: "A4",
   defBodySize: 10.5,
   defLeading: 1.5,
@@ -174,6 +188,15 @@ export const defaultSettings: Settings = {
   columns: 1,
   columnGap: 6,
   columnRule: false,
+  bodyFont: "serif",
+  headingFont: "display",
+  textColor: "#18181a",
+  headlineFont: "",
+  headlineColor: "",
+  kickerFont: "",
+  kickerColor: "",
+  deckFont: "",
+  deckColor: "",
   bodySize: 10.5,
   leading: 1.5,
   align: "justify",
@@ -317,6 +340,12 @@ class Store {
 
   emit() {
     for (const fn of this.listeners) fn(this.state);
+    if (loadPrefs().autosave) {
+      this.persist();
+    }
+  }
+
+  persistForce() {
     this.persist();
   }
 
