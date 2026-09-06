@@ -30,3 +30,4 @@ echo [WARN] Install NSIS from https://nsis.sourceforge.io/ to produce Typographu
 
 :after_nsis
 if not defined CI pause
+exit /b 0

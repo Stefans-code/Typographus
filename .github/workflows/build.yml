@@ -40,6 +40,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - name: Install NSIS
+        run: choco install nsis -y --no-progress
+        shell: cmd
       - name: Build
         run: build_windows.bat
         shell: cmd
