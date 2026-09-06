@@ -17,3 +17,6 @@ webui/
 # PyInstaller output
 build_out/
 build_tmp/
+
+# downloaded CI artifacts (scratch, not source)
+dist_artifacts/

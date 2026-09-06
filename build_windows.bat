@@ -18,9 +18,15 @@ if exist build_tmp rmdir /S /Q build_tmp
 
 echo [SUCCESS] App folder: build_out\Typographus\Typographus.exe
 
+set MAKENSIS=
+if exist "%ProgramFiles(x86)%\NSIS\makensis.exe" set MAKENSIS="%ProgramFiles(x86)%\NSIS\makensis.exe"
+if defined MAKENSIS goto :run_nsis
 where makensis >nul 2>nul
 if errorlevel 1 goto :no_nsis
-makensis installer.nsi
+set MAKENSIS=makensis
+
+:run_nsis
+%MAKENSIS% installer.nsi
 echo [SUCCESS] Installer: build_out\TypographusSetup.exe
 goto :after_nsis
 
