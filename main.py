@@ -16,10 +16,12 @@ import socketserver
 import sys
 import threading
 import time
+import urllib.error
+import urllib.request
 
-from PySide6.QtWidgets import QApplication, QMainWindow, QFileDialog, QStatusBar, QLabel
-from PySide6.QtCore import QUrl, Qt, QObject, Slot, QFile, QIODevice
-from PySide6.QtGui import QIcon, QGuiApplication
+from PySide6.QtWidgets import QApplication, QMainWindow, QFileDialog, QStatusBar, QLabel, QMessageBox
+from PySide6.QtCore import QUrl, Qt, QObject, Slot, Signal, QFile, QIODevice
+from PySide6.QtGui import QIcon, QGuiApplication, QDesktopServices
 from PySide6.QtWebChannel import QWebChannel
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWebEngineCore import (
@@ -31,6 +33,31 @@ from core import license_manager as lic
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 PREFERRED_PORT = 47821  # fixed so the web origin (and its localStorage) is stable
+APP_VERSION = "0.1.0"  # keep in sync with package.json
+
+# Nexflamma's shared update-check convention (same pattern already used by
+# Datarium/Vocius): a small static JSON published on the marketing site,
+# {"version": "...", "download_url": "...", "changelog": "...", "sha256": "..."}.
+# Plain HTTPS GET, no auth, no telemetry — silent on any failure.
+UPDATE_URL = "https://nexflamma.net/typographus_version.json"
+
+
+def _version_tuple(v):
+    parts = []
+    for p in str(v).strip().split("."):
+        digits = "".join(ch for ch in p if ch.isdigit())
+        parts.append(int(digits) if digits else 0)
+    return tuple(parts) if parts else (0,)
+
+
+def _is_newer_version(remote_version, current_version):
+    return _version_tuple(remote_version) > _version_tuple(current_version)
+
+
+def _fetch_remote_version_info():
+    req = urllib.request.Request(UPDATE_URL, headers={"User-Agent": "Typographus/1.0 (+desktop)"})
+    with urllib.request.urlopen(req, timeout=8) as resp:
+        return json.loads(resp.read().decode())
 
 
 def _resource(*parts):
@@ -86,6 +113,14 @@ def _qwebchannel_js() -> str:
 
 class Bridge(QObject):
     """Native license backend exposed to the UI as window.typographus.license."""
+
+    def __init__(self, win: "MainWindow"):
+        super().__init__(win)
+        self._win = win
+
+    @Slot()
+    def checkForUpdates(self):
+        self._win.check_for_updates(silent=False)
 
     @Slot(result=str)
     def licenseStatus(self):
@@ -172,6 +207,7 @@ BRIDGE_JS = r"""
     activate: function (t) { return _call('licenseActivate', t); },
     deactivate: function () { return _call('licenseDeactivate'); }
   };
+  window.typographus.checkForUpdates = function () { _ready(function () { _bridge.checkForUpdates(); }); };
 })();
 """
 
@@ -189,6 +225,8 @@ class NativePage(QWebEnginePage):
 
 
 class MainWindow(QMainWindow):
+    _updateChecked = Signal(object, str, bool)  # (info-dict-or-None, error, silent)
+
     def __init__(self, url: str):
         super().__init__()
         self.setWindowTitle("Typographus — Editorial & Typesetting Engine")
@@ -234,7 +272,7 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(self.view)
         self.view.settings().setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessFileUrls, True)
 
-        self.bridge = Bridge()
+        self.bridge = Bridge(self)
         self.channel = QWebChannel()
         self.channel.registerObject("bridge", self.bridge)
         self.web_page.setWebChannel(self.channel)
@@ -243,6 +281,45 @@ class MainWindow(QMainWindow):
         self.setStatusBar(QStatusBar())
         self.statusBar().setVisible(False)
         self.view.load(QUrl(url))
+
+        self._updateChecked.connect(self._on_update_checked)
+        self.check_for_updates(silent=True)  # quiet check at startup, no popup if offline/up to date
+
+    def check_for_updates(self, silent: bool):
+        """Query Nexflamma's shared update endpoint (see UPDATE_URL) on a
+        background thread; the result comes back on the Qt main thread via
+        the _updateChecked signal so it's safe to show a dialog from it."""
+        def worker():
+            try:
+                info = _fetch_remote_version_info()
+                self._updateChecked.emit(info, "", silent)
+            except Exception as e:
+                self._updateChecked.emit(None, str(e), silent)
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_update_checked(self, info, error, silent):
+        if error:
+            if not silent:
+                QMessageBox.warning(self, "Aggiornamenti", f"Impossibile verificare gli aggiornamenti: {error}")
+            return
+        remote_version = (info or {}).get("version", APP_VERSION)
+        if not _is_newer_version(remote_version, APP_VERSION):
+            if not silent:
+                QMessageBox.information(self, "Aggiornamenti",
+                                         f"Il software è aggiornato alla versione più recente (v{APP_VERSION}).")
+            return
+        changelog = info.get("changelog", "Miglioramenti generali.")
+        sha256 = info.get("sha256", "")
+        msg = f"Una nuova versione di Typographus è disponibile: v{remote_version}!\n\nChangelog:\n{changelog}"
+        if sha256:
+            msg += f"\n\nSHA-256 dell'installer (verifica dopo il download):\n{sha256}"
+        msg += "\n\nVuoi scaricarla ora?"
+        box = QMessageBox(QMessageBox.Icon.Information, "Nuovo aggiornamento disponibile", msg,
+                           QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, self)
+        if box.exec() == QMessageBox.StandardButton.Yes:
+            download_url = info.get("download_url", "")
+            if download_url:
+                QDesktopServices.openUrl(QUrl(download_url))
 
     def handle_native(self, cmd: str):
         wh = self.windowHandle()

@@ -19,11 +19,14 @@ if exist build_tmp rmdir /S /Q build_tmp
 echo [SUCCESS] App folder: build_out\Typographus\Typographus.exe
 
 where makensis >nul 2>nul
-if %ERRORLEVEL% EQU 0 (
-  makensis installer.nsi
-  echo [SUCCESS] Installer: build_out\TypographusSetup.exe
-) else (
-  echo [WARN] makensis not found (NSIS not installed) - skipping installer packaging.
-  echo [WARN] Install NSIS ^(https://nsis.sourceforge.io/^) to produce TypographusSetup.exe.
-)
+if errorlevel 1 goto :no_nsis
+makensis installer.nsi
+echo [SUCCESS] Installer: build_out\TypographusSetup.exe
+goto :after_nsis
+
+:no_nsis
+echo [WARN] makensis not found - NSIS is not installed, skipping installer packaging.
+echo [WARN] Install NSIS from https://nsis.sourceforge.io/ to produce TypographusSetup.exe.
+
+:after_nsis
 if not defined CI pause
