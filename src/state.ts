@@ -72,6 +72,11 @@ export interface Settings {
 
   /* copyfitting */
   targetWords: number;
+
+  /* citations: "author-date" — (Autore, Anno) inline, bibliografia alfabetica;
+     "numeric" — [1] inline nell'ordine di prima citazione, bibliografia numerata
+     nello stesso ordine (stile IEEE/Vancouver, comune nelle tesi STEM). */
+  citationStyle: "author-date" | "numeric";
 }
 
 export type EditorialStatus = "draft" | "review" | "approved" | "published";
@@ -219,6 +224,7 @@ export const defaultSettings: Settings = {
   cmykPreview: false,
   iccProfile: "ISO Coated v2 (ECI) — FOGRA39",
   targetWords: 900,
+  citationStyle: "author-date",
 };
 
 /* ----------------------------- persistence keys ----------------------------- */

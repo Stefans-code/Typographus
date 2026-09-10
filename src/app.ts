@@ -39,6 +39,8 @@ import { analyze, estimateExtent, type Analysis } from "./metrics";
 import { lint } from "./linter";
 import { importFile } from "./importers";
 import { buildStandaloneHtml, buildToc, downloadBlob, exportEpub, printDocument } from "./exporters";
+import { toLatex, toTypst, slugForExport } from "./latex";
+import JSZip from "jszip";
 import { FONT_OPTIONS, FONT_STACKS, pageDims, renderGalley, renderPaged } from "./paginate";
 import {
   debounce,
@@ -72,6 +74,18 @@ interface DesktopBridge {
     hwid(): Promise<string>;
     activate(token: string): Promise<LicenseStatus>;
     deactivate(): Promise<LicenseStatus>;
+  };
+  typst?: {
+    status(): Promise<{ installed: boolean; downloadable?: boolean; path?: string; system?: boolean }>;
+    download(): Promise<{ ok: boolean; path?: string; error?: string }>;
+    compile(source: string): Promise<{ ok: boolean; pdfBase64?: string; error?: string; notInstalled?: boolean }>;
+  };
+  wordpress?: {
+    hasCredentials(): Promise<{ has: boolean }>;
+    saveCredentials(site: string, user: string, pw: string): Promise<{ ok: boolean }>;
+    removeCredentials(): Promise<{ ok: boolean }>;
+    checkSite(): Promise<{ ok: boolean; siteName?: string; error?: string }>;
+    publish(title: string, html: string, status: string): Promise<{ ok: boolean; link?: string; error?: string }>;
   };
 }
 const desktop: DesktopBridge | undefined = (window as unknown as { typographus?: DesktopBridge }).typographus;
@@ -304,7 +318,7 @@ class App {
     this.root.innerHTML = `
       ${this.titlebar()}
       <main id="screenRoot" class="screen-root"></main>
-      <input type="file" id="fileInput" accept=".md,.markdown,.txt,.docx" style="display:none">
+      <input type="file" id="fileInput" accept=".md,.markdown,.txt,.docx,.pdf" style="display:none">
     `;
     this.screenRoot = byId("screenRoot");
     this.fileInput = byId("fileInput");
@@ -2210,9 +2224,10 @@ class App {
 
       <div class="section">
         <h3>${icon("menu_book", "sm")} Bibliografia e citazioni</h3>
-        <div id="refList"></div>
+        ${segmented("citationStyle", [["author-date", "Autore-anno"], ["numeric", "Numerica (IEEE)"]], this.s.citationStyle)}
+        <div id="refList" style="margin-top:12px"></div>
         <button class="btn btn--tonal" id="addRef" style="width:100%;margin-top:8px">${icon("add")}Aggiungi riferimento</button>
-        <p class="help">Cita nel testo con <code>[@chiave]</code> → diventa <em>(Autore anno)</em> e genera automaticamente la sezione Bibliografia. ${refs.length ? `${refs.length} riferimenti.` : ""}</p>
+        <p class="help">Cita nel testo con <code>[@chiave]</code> → diventa <em>${this.s.citationStyle === "numeric" ? "[1]" : "(Autore anno)"}</em> e genera automaticamente la sezione Bibliografia. ${refs.length ? `${refs.length} riferimenti.` : ""}</p>
       </div>`;
   }
 
@@ -2239,6 +2254,10 @@ class App {
     }
     bindSwitch("edColophon", (c) => {
       this.store.setMeta("genColophon", c);
+      this.renderPreview();
+    });
+    bindSegmented("citationStyle", (v) => {
+      this.store.setSetting("citationStyle", v as "author-date" | "numeric");
       this.renderPreview();
     });
     byId("addRef").onclick = () => {
@@ -2729,6 +2748,17 @@ class App {
         <button class="btn btn--outlined" id="htmlBtn" style="width:100%">${icon("download")}Esporta HTML autonomo</button>
       </div>
       <div class="section">
+        <h3>${icon("functions", "sm")} LaTeX &amp; Typst</h3>
+        <div class="stack">
+          <p class="help">Conversione best-effort del sorgente Markdown: titoli, elenchi, note, citazioni <code>[@chiave]</code> e formule
+            <code>$…$</code>/<code>$$…$$</code>. Tabelle e stili di testo complessi restano testo semplice — rivedi il risultato.</p>
+          <button class="btn btn--tonal" id="latexZipBtn" style="width:100%">${icon("download")}Scarica progetto LaTeX (.zip, per Overleaf)</button>
+          <button class="btn btn--filled" id="overleafBtn" style="width:100%">${icon("open_in_new")}Apri in Overleaf</button>
+          <button class="btn btn--outlined" id="typstBtn" style="width:100%">${icon("download")}Scarica sorgente Typst (.typ)</button>
+          <div id="typstCompileWrap"></div>
+        </div>
+      </div>
+      <div class="section">
         <h3>${icon("cloud_upload", "sm")} Condividi e Pubblica</h3>
         <div class="stack">
           <p class="help">Pubblica temporaneamente il documento standalone online per condividerlo o leggerlo nel browser.</p>
@@ -2740,6 +2770,26 @@ class App {
             </div>
             <p class="help" style="color:var(--accent);font-weight:600;margin:0">Il link è pronto! Chiunque lo scaricherà vedrà il tuo impaginato.</p>
           </div>
+        </div>
+      </div>
+      <div class="section">
+        <h3>${icon("public", "sm")} Pubblica su WordPress</h3>
+        <div class="stack">
+          <p class="help">Usa l'API ufficiale di WordPress con una <b>Password Applicazione</b> (Utenti → Il tuo profilo → Password
+            applicazioni, nel pannello wp-admin del sito) — non la tua password reale, revocabile in ogni momento.</p>
+          <div class="field"><label>Indirizzo del sito</label><input type="text" id="wpSite" placeholder="https://www.iltuogiornale.it"></div>
+          <div class="grid-2">
+            <div class="field"><label>Utente</label><input type="text" id="wpUser" placeholder="nomeutente"></div>
+            <div class="field"><label>Password applicazione</label><input type="password" id="wpPass" placeholder="xxxx xxxx xxxx xxxx" autocomplete="off"></div>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn--outlined btn--sm" id="wpSave">${icon("key")}Salva credenziali</button>
+            <button class="btn btn--text btn--sm" id="wpCheck">${icon("wifi_tethering")}Verifica sito</button>
+          </div>
+          <div id="wpCheckResult"></div>
+          ${segmented("wpStatus", [["draft", "Come bozza"], ["publish", "Pubblica subito"]], "draft")}
+          <button class="btn btn--filled" id="wpPublishBtn" style="width:100%">${icon("cloud_upload")}Invia a WordPress</button>
+          <div id="wpPublishResult"></div>
         </div>
       </div>
       <div class="section">
@@ -2780,7 +2830,154 @@ class App {
       downloadBlob(new Blob([html], { type: "text/html" }), `${slugFile(this.store.state.title)}.html`);
       snackbar("HTML esportato.");
     };
-    
+
+    const slugName = () => slugForExport(this.store.state.title);
+
+    byId("latexZipBtn").onclick = async () => {
+      const { tex, bib } = toLatex(this.store.state);
+      const zip = new JSZip();
+      zip.file("main.tex", tex);
+      if (bib.trim()) zip.file(`${slugName()}.bib`, bib);
+      const blob = await zip.generateAsync({ type: "blob" });
+      downloadBlob(blob, `${slugName()}-latex.zip`);
+      snackbar("Progetto LaTeX esportato. Su Overleaf: Nuovo progetto → Carica progetto.");
+    };
+
+    byId("typstBtn").onclick = () => {
+      const typ = toTypst(this.store.state);
+      downloadBlob(new Blob([typ], { type: "text/plain" }), `${slugName()}.typ`);
+      snackbar("Sorgente Typst esportato.");
+    };
+
+    /* ---- compile with Typst (real compiler, downloaded on demand) ---- */
+    const typstWrap = byId("typstCompileWrap");
+    const renderTypstWrap = (installed: boolean, downloadable: boolean) => {
+      if (installed) {
+        typstWrap.innerHTML = `<button class="btn btn--filled" id="typstCompileBtn" style="width:100%;margin-top:8px">${icon("bolt")}Compila con Typst → PDF</button>
+          <div id="typstCompileResult"></div>`;
+        byId("typstCompileBtn").onclick = async () => {
+          const btn = byId<HTMLButtonElement>("typstCompileBtn");
+          btn.disabled = true;
+          const resHost = byId("typstCompileResult");
+          resHost.innerHTML = `<div class="ai-note">${icon("progress_activity", "sm")}<span>Compilazione in corso…</span></div>`;
+          try {
+            const src = toTypst(this.store.state);
+            const res = await desktop!.typst!.compile(src);
+            if (!res.ok || !res.pdfBase64) {
+              resHost.innerHTML = `<div class="ai-note">${icon("error", "sm")}<span>${escapeHtml(res.error || "Compilazione non riuscita.")}</span></div>`;
+              return;
+            }
+            const bytes = Uint8Array.from(atob(res.pdfBase64), (c) => c.charCodeAt(0));
+            downloadBlob(new Blob([bytes], { type: "application/pdf" }), `${slugName()}.pdf`);
+            resHost.innerHTML = "";
+            snackbar("PDF compilato con Typst.");
+          } finally {
+            btn.disabled = false;
+          }
+        };
+      } else if (downloadable) {
+        typstWrap.innerHTML = `<button class="btn btn--outlined" id="typstDownloadBtn" style="width:100%;margin-top:8px">${icon("cloud_download")}Scarica il compilatore Typst (~15 MB, una tantum)</button>
+          <p class="help">Da <code>github.com/typst/typst</code>, il binario ufficiale — nessun servizio terzo. Necessario per compilare
+            direttamente in PDF; senza, puoi comunque scaricare il sorgente <code>.typ</code> sopra e compilarlo altrove.</p>`;
+        byId("typstDownloadBtn").onclick = async () => {
+          const btn = byId<HTMLButtonElement>("typstDownloadBtn");
+          btn.disabled = true;
+          btn.innerHTML = `${icon("sync")}Download in corso…`;
+          const r = await desktop!.typst!.download();
+          if (r.ok) {
+            snackbar("Typst installato.");
+            renderTypstWrap(true, true);
+          } else {
+            snackbar(r.error || "Download non riuscito.");
+            btn.disabled = false;
+            btn.innerHTML = `${icon("cloud_download")}Scarica il compilatore Typst (~15 MB, una tantum)`;
+          }
+        };
+      } else {
+        typstWrap.innerHTML = "";
+      }
+    };
+    if (desktop?.typst) {
+      desktop.typst.status().then((s) => renderTypstWrap(s.installed, !!s.downloadable));
+    }
+
+    byId("overleafBtn").onclick = () => {
+      const { tex, bib } = toLatex(this.store.state);
+      const files: [string, string][] = [["main.tex", tex]];
+      if (bib.trim()) files.push([`${slugName()}.bib`, bib]);
+      const form = document.createElement("form");
+      form.action = "https://www.overleaf.com/docs";
+      form.method = "POST";
+      form.target = "_blank";
+      for (const [name, content] of files) {
+        const fInput = document.createElement("input");
+        fInput.type = "hidden";
+        fInput.name = "snip[]";
+        fInput.value = content;
+        form.appendChild(fInput);
+        const nInput = document.createElement("input");
+        nInput.type = "hidden";
+        nInput.name = "snip_name[]";
+        nInput.value = name;
+        form.appendChild(nInput);
+      }
+      document.body.appendChild(form);
+      form.submit();
+      form.remove();
+      snackbar("Apertura in Overleaf…");
+    };
+
+    /* ---- WordPress publish connector ---- */
+    const wpResult = byId("wpCheckResult");
+    const wpPubResult = byId("wpPublishResult");
+    const wpAvailable = !!desktop?.wordpress;
+    if (!wpAvailable) {
+      wpResult.innerHTML = `<div class="ai-note">${icon("info", "sm")}<span>Disponibile solo nell'app desktop Typographus.</span></div>`;
+      (byId<HTMLButtonElement>("wpSave")).disabled = true;
+      (byId<HTMLButtonElement>("wpCheck")).disabled = true;
+      (byId<HTMLButtonElement>("wpPublishBtn")).disabled = true;
+    } else {
+      let wpStatus: "draft" | "publish" = "draft";
+      bindSegmented("wpStatus", (v) => (wpStatus = v as "draft" | "publish"));
+
+      byId("wpSave").onclick = async () => {
+        const site = byId<HTMLInputElement>("wpSite").value.trim();
+        const user = byId<HTMLInputElement>("wpUser").value.trim();
+        const pw = byId<HTMLInputElement>("wpPass").value.trim();
+        if (!site || !user || !pw) {
+          snackbar("Compila sito, utente e password applicazione.");
+          return;
+        }
+        const r = await desktop!.wordpress!.saveCredentials(site, user, pw);
+        snackbar(r.ok ? "Credenziali salvate." : "Impossibile salvare le credenziali.");
+        if (r.ok) byId<HTMLInputElement>("wpPass").value = "";
+      };
+
+      byId("wpCheck").onclick = async () => {
+        wpResult.innerHTML = `<div class="ai-note">${icon("progress_activity", "sm")}<span>Verifica in corso…</span></div>`;
+        const r = await desktop!.wordpress!.checkSite();
+        wpResult.innerHTML = r.ok
+          ? `<div class="ai-verdict ok">${icon("check_circle", "sm")}<span>Raggiunto: <b>${escapeHtml(r.siteName || "")}</b>. È WordPress con l'API REST attiva.</span></div>`
+          : `<div class="ai-note">${icon("error", "sm")}<span>${escapeHtml(r.error || "Verifica non riuscita.")}</span></div>`;
+      };
+
+      byId("wpPublishBtn").onclick = async () => {
+        const btn = byId<HTMLButtonElement>("wpPublishBtn");
+        btn.disabled = true;
+        wpPubResult.innerHTML = `<div class="ai-note">${icon("progress_activity", "sm")}<span>Invio in corso…</span></div>`;
+        try {
+          const compiled = this.compileDoc();
+          const title = this.store.state.front.headline || this.store.state.title || "Senza titolo";
+          const res = await desktop!.wordpress!.publish(title, compiled.html, wpStatus);
+          wpPubResult.innerHTML = res.ok
+            ? `<div class="ai-verdict ok">${icon("check_circle", "sm")}<span>Inviato${res.link ? ` — <a href="${escapeHtml(res.link)}" target="_blank" rel="noopener">apri</a>` : ""}.</span></div>`
+            : `<div class="ai-note">${icon("error", "sm")}<span>${escapeHtml(res.error || "Pubblicazione non riuscita.")}</span></div>`;
+        } finally {
+          btn.disabled = false;
+        }
+      };
+    }
+
     byId("shareBtn").onclick = async () => {
       const btn = byId("shareBtn") as HTMLButtonElement;
       const originalHtml = btn.innerHTML;

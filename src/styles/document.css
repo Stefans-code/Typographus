@@ -150,6 +150,14 @@
   font-size: 0.82em; line-height: 1.45; color: #333; margin: 0 0 0.5em; padding-left: 1.4em;
   text-indent: -1.4em; text-align: left; hyphens: none;
 }
+.doc-bibliography .references-numeric .ref-entry { padding-left: 2.2em; text-indent: -2.2em; }
+.doc-bibliography .ref-num { font-variant-numeric: tabular-nums; }
+.doc .cite-numeric { font-variant-numeric: tabular-nums; }
+
+/* ---- Math (KaTeX, offline) ---- */
+.doc .katex-block { display: block; margin: 1em 0; text-align: center; overflow-x: auto; }
+.doc .katex-inline { white-space: nowrap; }
+.doc .katex-error { font-family: var(--font-mono, monospace); font-size: 0.85em; color: #b00; background: rgba(200, 0, 0, 0.08); border-radius: 2px; padding: 0 3px; }
 
 /* ---- Colophon (book publishing) ---- */
 .colophon {

@@ -6,6 +6,7 @@ import "@fontsource-variable/newsreader";
 import "@fontsource-variable/newsreader/wght-italic.css";
 import "@fontsource-variable/jetbrains-mono";
 import "material-symbols/rounded.css";
+import "katex/dist/katex.min.css";
 
 import "./styles/tokens.css";
 import "./styles/base.css";

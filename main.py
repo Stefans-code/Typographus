@@ -30,6 +30,8 @@ from PySide6.QtWebEngineCore import (
 )
 
 from core import license_manager as lic
+from core import wordpress_client as wp
+from core import typst_tool
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 PREFERRED_PORT = 47821  # fixed so the web origin (and its localStorage) is stable
@@ -139,6 +141,41 @@ class Bridge(QObject):
     def hwid(self):
         return json.dumps(lic.get_hwid())
 
+    # ---- WordPress publish connector ----
+    @Slot(result=str)
+    def wpHasCredentials(self):
+        return json.dumps({"has": wp.has_credentials()})
+
+    @Slot(str, str, str, result=str)
+    def wpSaveCredentials(self, site_url, username, app_password):
+        return json.dumps({"ok": wp.save_credentials(site_url, username, app_password)})
+
+    @Slot(result=str)
+    def wpRemoveCredentials(self):
+        wp.remove_credentials()
+        return json.dumps({"ok": True})
+
+    @Slot(result=str)
+    def wpCheckSite(self):
+        return json.dumps(wp.check_site())
+
+    @Slot(str, str, str, result=str)
+    def wpPublish(self, title, html, status):
+        return json.dumps(wp.publish(title, html, status))
+
+    # ---- Typst compiler (downloaded on demand, see core/typst_tool.py) ----
+    @Slot(result=str)
+    def typstStatus(self):
+        return json.dumps(typst_tool.status())
+
+    @Slot(result=str)
+    def typstDownload(self):
+        return json.dumps(typst_tool.download())
+
+    @Slot(str, result=str)
+    def typstCompile(self, typ_source):
+        return json.dumps(typst_tool.compile_source(typ_source))
+
 
 # Injected before the UI loads: window.typographus (window controls via a
 # custom "typoctl://" navigation, + license over QWebChannel).
@@ -201,6 +238,27 @@ BRIDGE_JS = r"""
       });
     });
   }
+  function _callN(name) {
+    var args = Array.prototype.slice.call(arguments, 1);
+    return new Promise(function (resolve) {
+      _ready(function () {
+        var cb = function (r) { try { resolve(JSON.parse(r)); } catch (e) { resolve(r); } };
+        _bridge[name].apply(_bridge, args.concat([cb]));
+      });
+    });
+  }
+  window.typographus.typst = {
+    status: function () { return _call('typstStatus'); },
+    download: function () { return _call('typstDownload'); },
+    compile: function (src) { return _call('typstCompile', src); }
+  };
+  window.typographus.wordpress = {
+    hasCredentials: function () { return _call('wpHasCredentials'); },
+    saveCredentials: function (site, user, pw) { return _callN('wpSaveCredentials', site, user, pw); },
+    removeCredentials: function () { return _call('wpRemoveCredentials'); },
+    checkSite: function () { return _call('wpCheckSite'); },
+    publish: function (title, html, status) { return _callN('wpPublish', title, html, status); }
+  };
   window.typographus.license = {
     status: function () { return _call('licenseStatus'); },
     hwid: function () { return _call('hwid'); },
