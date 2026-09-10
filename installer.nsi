@@ -56,4 +56,13 @@ Section "Uninstall"
   Delete "$DESKTOP\Typographus.lnk"
   DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Typographus"
   DeleteRegKey HKCU "Software\Typographus"
+
+  ; App data (licenza, credenziali WordPress, compilatore Typst scaricato,
+  ; cache) vive fuori da $INSTDIR, in %LOCALAPPDATA%\Typographus — chiedi
+  ; prima di cancellarla, dato che contiene la licenza attivata dell'utente.
+  MessageBox MB_YESNO|MB_ICONQUESTION \
+    "Vuoi rimuovere anche licenza, impostazioni e dati salvati (%LOCALAPPDATA%\Typographus)?$\n$\nScegli No per poterli ritrovare in caso di reinstallazione." \
+    IDNO skip_userdata
+  RMDir /r "$LOCALAPPDATA\Typographus"
+  skip_userdata:
 SectionEnd
