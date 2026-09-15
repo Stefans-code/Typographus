@@ -639,6 +639,19 @@ class App {
         <button class="icon-btn" data-md="superscript" data-tip="Nota a piè pagina">${icon("superscript", "sm")}</button>
         <button class="icon-btn" data-md="link" data-tip="Link internet (Ctrl+K)">${icon("link", "sm")}</button>
         <button class="icon-btn" data-md="format_list_bulleted" data-tip="Elenco">${icon("format_list_bulleted", "sm")}</button>
+        <span class="sep"></span>
+
+        <!-- Dropdown Inserisci blocco (stile "slash command") -->
+        <div class="toolbar-dropdown" id="tbInsertDropdown">
+          <button class="icon-btn" id="tbInsertTrigger" data-tip="Inserisci blocco (/)">${icon("add_box", "sm")}</button>
+          <div class="dropdown-menu insert-block-menu" id="tbInsertMenu" style="display:none;">
+            <button class="insert-menu-item" data-md="table">${icon("table_chart", "xs")} Tabella</button>
+            <button class="insert-menu-item" data-md="code">${icon("code", "xs")} Blocco di codice</button>
+            <button class="insert-menu-item" data-md="format_list_numbered">${icon("format_list_numbered", "xs")} Elenco numerato</button>
+            <button class="insert-menu-item" data-md="checklist">${icon("checklist", "xs")} Elenco di controllo</button>
+            <button class="insert-menu-item" data-md="horizontal_rule">${icon("horizontal_rule", "xs")} Divisore</button>
+          </div>
+        </div>
       </div>
       
       <div class="find-replace-panel" id="findReplacePanel" style="display:none; padding: 6px 12px; background: var(--md-surface-container-high); border-bottom: 1px solid var(--hairline); align-items: center; gap: 8px;">
@@ -879,10 +892,23 @@ class App {
       };
     }
 
+    // Toggle insert-block menu ("/" slash command, Notion-style)
+    const insertTrigger = byId("tbInsertTrigger");
+    const insertMenu = byId("tbInsertMenu");
+    if (insertTrigger && insertMenu) {
+      insertTrigger.onclick = (e) => {
+        e.stopPropagation();
+        insertMenu.style.display = insertMenu.style.display === "none" ? "flex" : "none";
+        if (colorMenu) colorMenu.style.display = "none";
+        if (fontMenu) fontMenu.style.display = "none";
+      };
+    }
+
     // Close menus on click outside
     document.addEventListener("click", () => {
       if (colorMenu) colorMenu.style.display = "none";
       if (fontMenu) fontMenu.style.display = "none";
+      if (insertMenu) insertMenu.style.display = "none";
     });
 
     // Apply color from toolbar dropdown
@@ -1154,6 +1180,21 @@ class App {
         break;
       case "format_list_bulleted":
         insert = `\n- ${sel || "voce"}\n`;
+        break;
+      case "format_list_numbered":
+        insert = `\n1. ${sel || "voce"}\n`;
+        break;
+      case "checklist":
+        insert = `\n- [ ] ${sel || "attività"}\n`;
+        break;
+      case "horizontal_rule":
+        insert = `\n\n---\n\n`;
+        break;
+      case "code":
+        insert = `\n\`\`\`\n${sel || "codice"}\n\`\`\`\n`;
+        break;
+      case "table":
+        insert = `\n| Colonna 1 | Colonna 2 | Colonna 3 |\n| --- | --- | --- |\n| ${sel || "cella"} |  |  |\n|  |  |  |\n`;
         break;
     }
     ed.setRangeText(insert, start, end, "end");

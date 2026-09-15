@@ -198,3 +198,30 @@
   --md-elevation-4: 0 12px 30px -10px rgba(30,20,5,.4);
   --md-elevation-5: 0 22px 50px -14px rgba(30,20,5,.46);
 }
+
+/* =============================================================
+   "Dream Atelier" — a neo-retro pop layer on top of "Carta e
+   Inchiostro". Five flat, saturated inks (a proofing table lit
+   like a '90s title sequence) used sparingly for decoration and
+   hard, offset "sticker" shadows instead of soft blur — bold and
+   unconventional on entry surfaces (home, hero, cards), while the
+   dense working chrome stays calm and legible.
+   ============================================================= */
+:root {
+  --pop-coral: #ff5f6d;
+  --pop-cyan: #10c4d6;
+  --pop-violet: #7b5cff;
+  --pop-lime: #a8d64b;
+  --pop-gold: #ffc93f;
+  --pop-gradient: linear-gradient(115deg, var(--pop-coral) 0%, var(--pop-violet) 48%, var(--pop-cyan) 100%);
+  --hard-edge: 2px;
+  --hard-offset: 4px;
+}
+[data-theme="light"], :root {
+  --hard-shadow-color: #211d17;
+}
+[data-theme="dark"] {
+  /* black-on-black would vanish here — a warm cream outline reads as a
+     crisp sticker edge against lamplight instead */
+  --hard-shadow-color: #ece4d7;
+}

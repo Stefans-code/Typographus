@@ -18,8 +18,17 @@
 .btn:disabled { cursor: not-allowed; opacity: .5; }
 .btn:disabled::after { opacity: 0; }
 
-.btn--filled { background: var(--accent); color: var(--on-accent); box-shadow: 0 1px 2px rgba(0,0,0,.25); }
-.btn--filled:hover { box-shadow: 0 2px 10px -2px rgba(var(--md-primary-rgb), .55); }
+.btn--filled {
+  background: var(--accent); color: var(--on-accent);
+  border: var(--hard-edge) solid var(--hard-shadow-color);
+  box-shadow: var(--hard-offset) var(--hard-offset) 0 0 var(--hard-shadow-color);
+  transition: background var(--t-fast), transform var(--t-fast), box-shadow var(--t-fast);
+}
+.btn--filled:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: calc(var(--hard-offset) + 2px) calc(var(--hard-offset) + 2px) 0 0 var(--hard-shadow-color);
+}
+.btn--filled:active { transform: translate(0, 0); box-shadow: 1px 1px 0 0 var(--hard-shadow-color); }
 .btn--tonal { background: var(--md-surface-container-high); color: var(--md-on-surface); border: 1px solid var(--hairline); }
 .btn--elevated { background: var(--md-surface-container); color: var(--accent); box-shadow: var(--md-elevation-1); }
 .btn--outlined { background: transparent; color: var(--md-on-surface); border: 1px solid var(--md-outline); }
@@ -92,6 +101,21 @@
 
 /* ----------------------------- Cards ----------------------------- */
 .card { background: var(--md-surface-container); border-radius: var(--r-md); border: 1px solid var(--hairline); }
+
+/* ----------------------------- Pop / "dream" accents ----------------------------- */
+.pop-text {
+  background: var(--pop-gradient); background-clip: text; -webkit-background-clip: text;
+  color: transparent; -webkit-text-fill-color: transparent;
+}
+.hard-card {
+  border: var(--hard-edge) solid var(--hard-shadow-color);
+  box-shadow: var(--hard-offset) var(--hard-offset) 0 0 var(--hard-shadow-color);
+  transition: transform var(--t-fast) var(--ease-out), box-shadow var(--t-fast) var(--ease-out);
+}
+.hard-card:hover {
+  transform: translate(-3px, -3px);
+  box-shadow: calc(var(--hard-offset) + 3px) calc(var(--hard-offset) + 3px) 0 0 var(--hard-shadow-color);
+}
 
 /* ----------------------------- Text fields ----------------------------- */
 .field { position: relative; display: flex; flex-direction: column; gap: 6px; }
