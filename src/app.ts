@@ -124,6 +124,7 @@ class App {
   supabaseUser: any = null;
   supabaseProfile: any = null;
   onlineTemplates: CommunityTemplate[] = [];
+  lintBadgeUpdate = debounce(() => this.refreshLintBadge(), 400);
 
   // refs
   root: HTMLElement;
@@ -671,6 +672,7 @@ class App {
       <div class="editor-status-bar" id="editorStatus">
         <span class="status-item" id="statusCount" style="margin-right:12px;">0 parole</span>
         <span class="status-item" id="statusChars" style="margin-right:12px;">0 caratteri</span>
+        <button class="status-item status-lint" id="statusLint" data-tip="Diagnostica di stile — apri Revisione">${icon("fact_check", "xs")}<span>0</span></button>
         <span class="status-item" id="statusSel" style="display:none; color:var(--accent); font-weight:600;"></span>
         <span class="spacer" style="flex:1;"></span>
         <span class="status-item" style="opacity:0.8; font-size:9.5px; text-transform:uppercase; letter-spacing:0.4px;">Ctrl+F Trova · Ctrl+S Salva · Ctrl+P Stampa</span>
@@ -761,11 +763,16 @@ class App {
     
     this.updateEditorStatus();
 
+    const lintBadge = byId("statusLint");
+    if (lintBadge) lintBadge.onclick = () => this.switchTool("review");
+    this.refreshLintBadge();
+
     ed.addEventListener("input", () => {
       this.store.set({ source: ed.value });
       this.schedule();
       this.updateReviewReadouts();
       this.updateEditorStatus();
+      this.lintBadgeUpdate();
       this.pushStateDebounced();
       if (this.tool === "typography") {
         this.updateSelectionFormattingPanel();
@@ -1448,6 +1455,16 @@ class App {
     }
   }
 
+  refreshLintBadge() {
+    const badge = byId("statusLint");
+    if (!badge) return;
+    const issues = lint(this.store.state.source);
+    const count = issues.reduce((n, i) => n + i.count, 0);
+    const span = badge.querySelector("span");
+    if (span) span.textContent = String(count);
+    badge.classList.toggle("has-issues", count > 0);
+  }
+
   pushState(source: string) {
     if (this.undoStack.length === 0 || this.undoStack[this.undoStack.length - 1] !== source) {
       this.undoStack.push(source);
@@ -2027,6 +2044,15 @@ class App {
       </div>
 
       <div class="section">
+        <h3>${icon("auto_awesome", "sm")} Stili rapidi</h3>
+        <div class="quickstyle-grid">
+          <button class="quickstyle-card" data-qs="manoscritto"><span class="qs-prev" style="font-family:var(--doc-font-serif)">Aa</span><b>Manoscritto</b></button>
+          <button class="quickstyle-card" data-qs="rivista"><span class="qs-prev" style="font-family:var(--doc-font-display)">Aa</span><b>Rivista</b></button>
+          <button class="quickstyle-card" data-qs="accademico"><span class="qs-prev" style="font-family:'Times New Roman',serif">Aa</span><b>Accademico</b></button>
+          <button class="quickstyle-card" data-qs="minimal"><span class="qs-prev" style="font-family:var(--font-ui)">Aa</span><b>Minimal</b></button>
+        </div>
+      </div>
+      <div class="section">
         <h3>${icon("text_fields", "sm")} Corpo del testo</h3>
         <div class="stack">
           ${fieldSelect("Carattere del testo", "bodyFont", FONT_OPTIONS, s.bodyFont)}
@@ -2077,6 +2103,26 @@ class App {
   bindTypography() {
     // Inizializza e collega gli strumenti di stile selezione dinamica
     this.updateSelectionFormattingPanel();
+
+    // Stili rapidi — una galleria di combinazioni pronte (font + interlinea +
+    // rientro + capolettera), come le "quick styles" di un elaboratore testi.
+    const QUICK_STYLES: Record<string, Partial<Settings>> = {
+      manoscritto: { bodyFont: "serif", headingFont: "display", bodySize: 11, leading: 1.6, align: "justify", dropcap: true, paraIndent: 1.2 },
+      rivista: { bodyFont: "sans", headingFont: "display", bodySize: 10, leading: 1.45, align: "justify", dropcap: true, paraIndent: 0 },
+      accademico: { bodyFont: "times", headingFont: "times", bodySize: 12, leading: 2, align: "left", dropcap: false, paraIndent: 1.27 },
+      minimal: { bodyFont: "sans", headingFont: "sans", bodySize: 10.5, leading: 1.5, align: "left", dropcap: false, paraIndent: 0 },
+    };
+    this.inspectorBody.querySelectorAll<HTMLElement>("[data-qs]").forEach((b) => {
+      b.onclick = () => {
+        const preset = QUICK_STYLES[b.dataset.qs!];
+        if (!preset) return;
+        this.store.set({ settings: { ...this.s, ...preset } });
+        this.renderPreview();
+        this.inspectorBody.innerHTML = this.panelTypography();
+        this.bindTypography();
+        snackbar(`Stile "${b.querySelector("b")?.textContent}" applicato.`);
+      };
+    });
 
     const selFont = byId<HTMLSelectElement>("selFont");
     if (selFont) {

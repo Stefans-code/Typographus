@@ -201,19 +201,17 @@
 
 /* =============================================================
    "Dream Atelier" — a neo-retro pop layer on top of "Carta e
-   Inchiostro". Five flat, saturated inks (a proofing table lit
-   like a '90s title sequence) used sparingly for decoration and
-   hard, offset "sticker" shadows instead of soft blur — bold and
-   unconventional on entry surfaces (home, hero, cards), while the
-   dense working chrome stays calm and legible.
+   Inchiostro". One accent, one companion violet — not a rainbow —
+   plus hard, offset "sticker" shadows instead of soft blur: bold
+   and unconventional on entry surfaces (home, hero, cards), while
+   the dense working chrome stays calm and legible.
    ============================================================= */
 :root {
-  --pop-coral: #ff5f6d;
-  --pop-cyan: #10c4d6;
   --pop-violet: #7b5cff;
-  --pop-lime: #a8d64b;
-  --pop-gold: #ffc93f;
-  --pop-gradient: linear-gradient(115deg, var(--pop-coral) 0%, var(--pop-violet) 48%, var(--pop-cyan) 100%);
+  --pop-gold: #d9a441;
+  /* two tones, not five — tied to the brand ink so it reads as "this app,
+     turned up," not a generic rainbow */
+  --pop-gradient: linear-gradient(120deg, var(--accent) 0%, var(--pop-violet) 100%);
   --hard-edge: 2px;
   --hard-offset: 4px;
 }
