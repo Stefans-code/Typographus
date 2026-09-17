@@ -33,6 +33,7 @@ from core import license_manager as lic
 from core import wordpress_client as wp
 from core import notion_client as notion
 from core import typst_tool
+from core import url_fetch
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 PREFERRED_PORT = 47821  # fixed so the web origin (and its localStorage) is stable
@@ -192,6 +193,11 @@ class Bridge(QObject):
         if url.startswith(("http://", "https://")):
             QDesktopServices.openUrl(QUrl(url))
 
+    # ---- "Importa da URL" — pull a template/document straight from a link ----
+    @Slot(str, result=str)
+    def fetchUrl(self, url):
+        return json.dumps(url_fetch.fetch(url))
+
     # ---- Typst compiler (downloaded on demand, see core/typst_tool.py) ----
     @Slot(result=str)
     def typstStatus(self):
@@ -296,6 +302,7 @@ BRIDGE_JS = r"""
     publish: function (title, source) { return _callN('notionPublish', title, source); }
   };
   window.typographus.openExternal = function (url) { _ready(function () { _bridge.openExternal(url); }); };
+  window.typographus.fetchUrl = function (url) { return _call('fetchUrl', url); };
   window.typographus.license = {
     status: function () { return _call('licenseStatus'); },
     hwid: function () { return _call('hwid'); },

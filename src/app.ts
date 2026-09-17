@@ -97,6 +97,7 @@ interface DesktopBridge {
     publish(title: string, source: string): Promise<{ ok: boolean; url?: string; error?: string }>;
   };
   openExternal?(url: string): void;
+  fetchUrl?(url: string): Promise<{ ok: boolean; filename?: string; contentType?: string; base64?: string; error?: string }>;
 }
 const desktop: DesktopBridge | undefined = (window as unknown as { typographus?: DesktopBridge }).typographus;
 const IS_ELECTRON = !!desktop;
@@ -1061,6 +1062,89 @@ class App {
     } catch (err) {
       snackbar(`Import non riuscito: ${(err as Error).message}`);
     }
+  }
+
+  /* "Importa da URL" — pull a template straight from a link (GitHub raw
+     Markdown, a Typst Universe package, an Overleaf project's raw .tex,
+     any plain-text source) instead of only a file already on disk. Runs
+     the exact same importFile() pipeline as a local file, just fed bytes
+     fetched by the desktop shell (avoids the browser's CORS wall). */
+  openImportUrlModal() {
+    const old = document.getElementById("importUrlScrim");
+    if (old) old.remove();
+
+    const scrim = document.createElement("div");
+    scrim.className = "scrim";
+    scrim.id = "importUrlScrim";
+    scrim.innerHTML = `
+      <div class="dialog md-help-dialog" role="dialog" aria-modal="true" style="max-width:480px">
+        <div class="lic-head">
+          <div class="vendor-logo sm" style="background:var(--accent-dim);color:var(--accent)">${icon("link")}</div>
+          <div>
+            <h2>Importa da URL</h2>
+            <p class="help" style="margin:2px 0 0">Un link diretto a un file: Markdown grezzo da GitHub, un pacchetto Typst Universe, un sorgente .tex da Overleaf, o una pagina di testo.</p>
+          </div>
+        </div>
+        <div class="modal-body stack" style="margin:18px 0">
+          <div class="field">
+            <label for="importUrlInput">Indirizzo del file</label>
+            <input type="text" id="importUrlInput" placeholder="https://raw.githubusercontent.com/…/template.md">
+          </div>
+          <div id="importUrlMsg"></div>
+        </div>
+        <div class="dialog-actions">
+          <button class="btn btn--text" id="importUrlCancel">Annulla</button>
+          <button class="btn btn--filled" id="importUrlSubmit">${icon("download", "sm")} Importa</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(scrim);
+    requestAnimationFrame(() => scrim.classList.add("is-open"));
+
+    const close = () => {
+      scrim.classList.remove("is-open");
+      setTimeout(() => scrim.remove(), 220);
+    };
+    scrim.addEventListener("click", (e) => {
+      if (e.target === scrim) close();
+    });
+    byId("importUrlCancel").onclick = close;
+
+    const msg = byId("importUrlMsg");
+    const input = byId<HTMLInputElement>("importUrlInput");
+    const submit = byId<HTMLButtonElement>("importUrlSubmit");
+
+    if (!desktop?.fetchUrl) {
+      msg.innerHTML = `<div class="ai-note">${icon("info", "sm")}<span>Disponibile solo nell'app desktop Typographus.</span></div>`;
+      submit.disabled = true;
+      input.disabled = true;
+      return;
+    }
+
+    submit.onclick = async () => {
+      const url = input.value.trim();
+      if (!url) {
+        snackbar("Incolla prima un indirizzo.");
+        return;
+      }
+      submit.disabled = true;
+      msg.innerHTML = `<div class="ai-note">${icon("progress_activity", "sm")}<span>Scaricamento in corso…</span></div>`;
+      try {
+        const res = await desktop!.fetchUrl!(url);
+        if (!res.ok || !res.base64 || !res.filename) {
+          msg.innerHTML = `<div class="ai-note">${icon("error", "sm")}<span>${escapeHtml(res.error || "Impossibile scaricare il file.")}</span></div>`;
+          submit.disabled = false;
+          return;
+        }
+        const bytes = Uint8Array.from(atob(res.base64), (c) => c.charCodeAt(0));
+        const file = new File([bytes], res.filename, { type: res.contentType || "text/plain" });
+        close();
+        await this.doImport(file);
+      } catch (err) {
+        msg.innerHTML = `<div class="ai-note">${icon("error", "sm")}<span>${escapeHtml((err as Error).message)}</span></div>`;
+        submit.disabled = false;
+      }
+    };
   }
 
   toggleTheme() {
@@ -3357,6 +3441,7 @@ class App {
         <div class="home-hero-actions">
           <button class="btn btn--filled" id="homeNewBlank">${icon("add")}Nuovo documento</button>
           <button class="btn btn--tonal" id="homeImport">${icon("upload_file")}Importa file…</button>
+          <button class="btn btn--tonal" id="homeImportUrl" data-tip="Da GitHub, Overleaf, Typst Universe o qualunque link diretto a un sorgente">${icon("link")}Importa da URL…</button>
         </div>
       </header>
 
@@ -3418,6 +3503,7 @@ class App {
   bindHome() {
     byId("homeNewBlank").onclick = () => this.newFromTemplate(TEMPLATES[0]);
     byId("homeImport").onclick = () => this.fileInput.click();
+    byId("homeImportUrl").onclick = () => this.openImportUrlModal();
     byId("homeSettings").onclick = () => this.goScreen("settings");
 
     this.screenRoot.querySelectorAll<HTMLElement>(".tpl-tabs button").forEach((btn) => {
