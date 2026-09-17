@@ -680,7 +680,7 @@ class App {
       <div class="editor-status-bar" id="editorStatus">
         <span class="status-item" id="statusCount" style="margin-right:12px;">0 parole</span>
         <span class="status-item" id="statusChars" style="margin-right:12px;">0 caratteri</span>
-        <button class="status-item status-lint" id="statusLint" data-tip="Diagnostica di stile — apri Revisione">${icon("fact_check", "xs")}<span>0</span></button>
+        <button class="status-item status-lint" id="statusLint" data-tip="Diagnostica di stile — apri Revisione">${icon("fact_check", "xs")}<span class="lint-count">0</span></button>
         <span class="status-item" id="statusSel" style="display:none; color:var(--accent); font-weight:600;"></span>
         <span class="spacer" style="flex:1;"></span>
         <span class="status-item" style="opacity:0.8; font-size:9.5px; text-transform:uppercase; letter-spacing:0.4px;">Ctrl+F Trova · Ctrl+S Salva · Ctrl+P Stampa</span>
@@ -1468,7 +1468,7 @@ class App {
     if (!badge) return;
     const issues = lint(this.store.state.source);
     const count = issues.reduce((n, i) => n + i.count, 0);
-    const span = badge.querySelector("span");
+    const span = badge.querySelector(".lint-count");
     if (span) span.textContent = String(count);
     badge.classList.toggle("has-issues", count > 0);
   }
