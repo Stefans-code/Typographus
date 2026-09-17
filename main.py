@@ -31,6 +31,7 @@ from PySide6.QtWebEngineCore import (
 
 from core import license_manager as lic
 from core import wordpress_client as wp
+from core import notion_client as notion
 from core import typst_tool
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -163,6 +164,34 @@ class Bridge(QObject):
     def wpPublish(self, title, html, status):
         return json.dumps(wp.publish(title, html, status))
 
+    # ---- Notion publish connector ----
+    @Slot(result=str)
+    def notionHasCredentials(self):
+        return json.dumps({"has": notion.has_credentials()})
+
+    @Slot(str, str, result=str)
+    def notionSaveCredentials(self, token, page_id):
+        return json.dumps({"ok": notion.save_credentials(token, page_id)})
+
+    @Slot(result=str)
+    def notionRemoveCredentials(self):
+        notion.remove_credentials()
+        return json.dumps({"ok": True})
+
+    @Slot(result=str)
+    def notionCheckConnection(self):
+        return json.dumps(notion.check_connection())
+
+    @Slot(str, str, result=str)
+    def notionPublish(self, title, source):
+        return json.dumps(notion.publish(title, source))
+
+    # ---- generic: open a URL in the system's default browser ----
+    @Slot(str)
+    def openExternal(self, url):
+        if url.startswith(("http://", "https://")):
+            QDesktopServices.openUrl(QUrl(url))
+
     # ---- Typst compiler (downloaded on demand, see core/typst_tool.py) ----
     @Slot(result=str)
     def typstStatus(self):
@@ -259,6 +288,14 @@ BRIDGE_JS = r"""
     checkSite: function () { return _call('wpCheckSite'); },
     publish: function (title, html, status) { return _callN('wpPublish', title, html, status); }
   };
+  window.typographus.notion = {
+    hasCredentials: function () { return _call('notionHasCredentials'); },
+    saveCredentials: function (token, pageId) { return _callN('notionSaveCredentials', token, pageId); },
+    removeCredentials: function () { return _call('notionRemoveCredentials'); },
+    checkConnection: function () { return _call('notionCheckConnection'); },
+    publish: function (title, source) { return _callN('notionPublish', title, source); }
+  };
+  window.typographus.openExternal = function (url) { _ready(function () { _bridge.openExternal(url); }); };
   window.typographus.license = {
     status: function () { return _call('licenseStatus'); },
     hwid: function () { return _call('hwid'); },

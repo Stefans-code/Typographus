@@ -87,6 +87,14 @@ interface DesktopBridge {
     checkSite(): Promise<{ ok: boolean; siteName?: string; error?: string }>;
     publish(title: string, html: string, status: string): Promise<{ ok: boolean; link?: string; error?: string }>;
   };
+  notion?: {
+    hasCredentials(): Promise<{ has: boolean }>;
+    saveCredentials(token: string, pageId: string): Promise<{ ok: boolean }>;
+    removeCredentials(): Promise<{ ok: boolean }>;
+    checkConnection(): Promise<{ ok: boolean; name?: string; error?: string }>;
+    publish(title: string, source: string): Promise<{ ok: boolean; url?: string; error?: string }>;
+  };
+  openExternal?(url: string): void;
 }
 const desktop: DesktopBridge | undefined = (window as unknown as { typographus?: DesktopBridge }).typographus;
 const IS_ELECTRON = !!desktop;
@@ -2843,6 +2851,7 @@ class App {
           <button class="btn btn--filled" id="overleafBtn" style="width:100%">${icon("open_in_new")}Apri in Overleaf</button>
           <button class="btn btn--outlined" id="typstBtn" style="width:100%">${icon("download")}Scarica sorgente Typst (.typ)</button>
           <div id="typstCompileWrap"></div>
+          <button class="btn btn--text btn--sm" id="typstUniverseBtn" style="width:100%">${icon("public", "sm")}Apri Typst Universe (typst.app)</button>
         </div>
       </div>
       <div class="section">
@@ -2860,23 +2869,51 @@ class App {
         </div>
       </div>
       <div class="section">
-        <h3>${icon("public", "sm")} Pubblica su WordPress</h3>
-        <div class="stack">
-          <p class="help">Usa l'API ufficiale di WordPress con una <b>Password Applicazione</b> (Utenti → Il tuo profilo → Password
-            applicazioni, nel pannello wp-admin del sito) — non la tua password reale, revocabile in ogni momento.</p>
-          <div class="field"><label>Indirizzo del sito</label><input type="text" id="wpSite" placeholder="https://www.iltuogiornale.it"></div>
-          <div class="grid-2">
-            <div class="field"><label>Utente</label><input type="text" id="wpUser" placeholder="nomeutente"></div>
-            <div class="field"><label>Password applicazione</label><input type="password" id="wpPass" placeholder="xxxx xxxx xxxx xxxx" autocomplete="off"></div>
+        <h3>${icon("hub", "sm")} Connessioni account</h3>
+        <p class="help" style="margin-top:-6px">Collega i tuoi account per pubblicare senza uscire da Typographus. Ogni servizio usa il proprio
+          meccanismo ufficiale — nessuna password reale viene mai vista da Typographus.</p>
+
+        <div class="connector-card">
+          <div class="connector-head">
+            <div class="connector-badge" style="background:#21759b1a;color:#21759b">${icon("public")}</div>
+            <div class="connector-title"><b>WordPress</b><span>Password Applicazione</span></div>
           </div>
-          <div style="display:flex;gap:8px">
-            <button class="btn btn--outlined btn--sm" id="wpSave">${icon("key")}Salva credenziali</button>
-            <button class="btn btn--text btn--sm" id="wpCheck">${icon("wifi_tethering")}Verifica sito</button>
+          <div class="stack">
+            <p class="help">Da Utenti → Il tuo profilo → Password applicazioni, nel pannello wp-admin del sito — non la tua password reale, revocabile in ogni momento.</p>
+            <div class="field"><label>Indirizzo del sito</label><input type="text" id="wpSite" placeholder="https://www.iltuogiornale.it"></div>
+            <div class="grid-2">
+              <div class="field"><label>Utente</label><input type="text" id="wpUser" placeholder="nomeutente"></div>
+              <div class="field"><label>Password applicazione</label><input type="password" id="wpPass" placeholder="xxxx xxxx xxxx xxxx" autocomplete="off"></div>
+            </div>
+            <div style="display:flex;gap:8px">
+              <button class="btn btn--outlined btn--sm" id="wpSave">${icon("key")}Salva credenziali</button>
+              <button class="btn btn--text btn--sm" id="wpCheck">${icon("wifi_tethering")}Verifica sito</button>
+            </div>
+            <div id="wpCheckResult"></div>
+            ${segmented("wpStatus", [["draft", "Come bozza"], ["publish", "Pubblica subito"]], "draft")}
+            <button class="btn btn--filled" id="wpPublishBtn" style="width:100%">${icon("cloud_upload")}Invia a WordPress</button>
+            <div id="wpPublishResult"></div>
           </div>
-          <div id="wpCheckResult"></div>
-          ${segmented("wpStatus", [["draft", "Come bozza"], ["publish", "Pubblica subito"]], "draft")}
-          <button class="btn btn--filled" id="wpPublishBtn" style="width:100%">${icon("cloud_upload")}Invia a WordPress</button>
-          <div id="wpPublishResult"></div>
+        </div>
+
+        <div class="connector-card">
+          <div class="connector-head">
+            <div class="connector-badge" style="background:#0000001a;color:var(--md-on-surface)">${icon("description")}</div>
+            <div class="connector-title"><b>Notion</b><span>Integration token</span></div>
+          </div>
+          <div class="stack">
+            <p class="help">Crea un'integrazione su <code>notion.so/my-integrations</code>, copia il <b>token</b>, poi condividi con
+              l'integrazione la pagina in cui vuoi ricevere i documenti (⋯ → Aggiungi connessioni) e incollane l'ID o il link qui sotto.</p>
+            <div class="field"><label>Integration token</label><input type="password" id="notionToken" placeholder="ntn_… oppure secret_…" autocomplete="off"></div>
+            <div class="field"><label>Pagina di destinazione (ID o link)</label><input type="text" id="notionPage" placeholder="https://www.notion.so/…-abcdef123456"></div>
+            <div style="display:flex;gap:8px">
+              <button class="btn btn--outlined btn--sm" id="notionSave">${icon("key")}Salva connessione</button>
+              <button class="btn btn--text btn--sm" id="notionCheck">${icon("wifi_tethering")}Verifica</button>
+            </div>
+            <div id="notionCheckResult"></div>
+            <button class="btn btn--filled" id="notionPublishBtn" style="width:100%">${icon("cloud_upload")}Invia a Notion</button>
+            <div id="notionPublishResult"></div>
+          </div>
         </div>
       </div>
       <div class="section">
@@ -3064,6 +3101,58 @@ class App {
         }
       };
     }
+
+    /* ---- Notion publish connector ---- */
+    const notionResult = byId("notionCheckResult");
+    const notionPubResult = byId("notionPublishResult");
+    const notionAvailable = !!desktop?.notion;
+    if (!notionAvailable) {
+      notionResult.innerHTML = `<div class="ai-note">${icon("info", "sm")}<span>Disponibile solo nell'app desktop Typographus.</span></div>`;
+      (byId<HTMLButtonElement>("notionSave")).disabled = true;
+      (byId<HTMLButtonElement>("notionCheck")).disabled = true;
+      (byId<HTMLButtonElement>("notionPublishBtn")).disabled = true;
+    } else {
+      byId("notionSave").onclick = async () => {
+        const token = byId<HTMLInputElement>("notionToken").value.trim();
+        const page = byId<HTMLInputElement>("notionPage").value.trim();
+        if (!token || !page) {
+          snackbar("Incolla token e pagina di destinazione.");
+          return;
+        }
+        const r = await desktop!.notion!.saveCredentials(token, page);
+        snackbar(r.ok ? "Connessione salvata." : "Impossibile salvare la connessione.");
+        if (r.ok) byId<HTMLInputElement>("notionToken").value = "";
+      };
+
+      byId("notionCheck").onclick = async () => {
+        notionResult.innerHTML = `<div class="ai-note">${icon("progress_activity", "sm")}<span>Verifica in corso…</span></div>`;
+        const r = await desktop!.notion!.checkConnection();
+        notionResult.innerHTML = r.ok
+          ? `<div class="ai-verdict ok">${icon("check_circle", "sm")}<span>Connessa: <b>${escapeHtml(r.name || "")}</b>.</span></div>`
+          : `<div class="ai-note">${icon("error", "sm")}<span>${escapeHtml(r.error || "Verifica non riuscita.")}</span></div>`;
+      };
+
+      byId("notionPublishBtn").onclick = async () => {
+        const btn = byId<HTMLButtonElement>("notionPublishBtn");
+        btn.disabled = true;
+        notionPubResult.innerHTML = `<div class="ai-note">${icon("progress_activity", "sm")}<span>Invio in corso…</span></div>`;
+        try {
+          const title = this.store.state.front.headline || this.store.state.title || "Senza titolo";
+          const res = await desktop!.notion!.publish(title, this.store.state.source);
+          notionPubResult.innerHTML = res.ok
+            ? `<div class="ai-verdict ok">${icon("check_circle", "sm")}<span>Inviato${res.url ? ` — <a href="${escapeHtml(res.url)}" target="_blank" rel="noopener">apri</a>` : ""}.</span></div>`
+            : `<div class="ai-note">${icon("error", "sm")}<span>${escapeHtml(res.error || "Pubblicazione non riuscita.")}</span></div>`;
+        } finally {
+          btn.disabled = false;
+        }
+      };
+    }
+
+    byId("typstUniverseBtn").onclick = () => {
+      const url = "https://typst.app";
+      if (desktop?.openExternal) desktop.openExternal(url);
+      else window.open(url, "_blank", "noopener");
+    };
 
     byId("shareBtn").onclick = async () => {
       const btn = byId("shareBtn") as HTMLButtonElement;
