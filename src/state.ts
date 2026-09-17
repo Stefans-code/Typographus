@@ -231,6 +231,47 @@ export const defaultSettings: Settings = {
 const LIB_KEY = "typographus.library.v1";
 const CUR_KEY = "typographus.current.v1";
 const PREFS_KEY = "typographus.prefs.v1";
+const VERSIONS_KEY = "typographus.versions.v1";
+
+/* ----------------------- version history (Overleaf-style) -----------------------
+   A local snapshot on every explicit save (Ctrl+S / the Salva button) — not
+   every autosave tick, which would flood the list with near-duplicates.
+   Capped per document so it stays a quick "undo to an hour ago", not a full
+   revision-control system. */
+export interface VersionSnapshot {
+  id: string;
+  ts: number;
+  source: string;
+}
+const MAX_VERSIONS_PER_DOC = 25;
+
+function readVersions(): Record<string, VersionSnapshot[]> {
+  try {
+    const raw = localStorage.getItem(VERSIONS_KEY);
+    return raw ? (JSON.parse(raw) as Record<string, VersionSnapshot[]>) : {};
+  } catch {
+    return {};
+  }
+}
+function writeVersions(all: Record<string, VersionSnapshot[]>) {
+  try {
+    localStorage.setItem(VERSIONS_KEY, JSON.stringify(all));
+  } catch {
+    /* ignore */
+  }
+}
+export function listVersions(docId: string): VersionSnapshot[] {
+  return (readVersions()[docId] ?? []).slice().sort((a, b) => b.ts - a.ts);
+}
+export function pushVersion(docId: string, source: string) {
+  const all = readVersions();
+  const list = all[docId] ?? [];
+  if (list.length && list[list.length - 1].source === source) return; // no-op save
+  list.push({ id: newId(), ts: Date.now(), source });
+  if (list.length > MAX_VERSIONS_PER_DOC) list.splice(0, list.length - MAX_VERSIONS_PER_DOC);
+  all[docId] = list;
+  writeVersions(all);
+}
 
 export function newId(): string {
   return "doc-" + Math.random().toString(36).slice(2, 8) + Date.now().toString(36).slice(-4);
@@ -353,6 +394,7 @@ class Store {
 
   persistForce() {
     this.persist();
+    pushVersion(this.state.id, this.state.source);
   }
 
   set(patch: Partial<DocState>) {

@@ -13,6 +13,7 @@ import {
   deleteFromLibrary,
   getFromLibrary,
   listLibrary,
+  listVersions,
   loadPrefs,
   newId,
   PAGE_PRESETS,
@@ -28,6 +29,7 @@ import {
   type Screen,
   type Settings,
   type ViewMode,
+  type VersionSnapshot,
 } from "./state";
 import { SAMPLE_FRONT, SAMPLE_MD, SAMPLE_TITLE } from "./sample";
 import { TEMPLATES, type Template, getCommunityTemplates, saveCommunityTemplate, deleteCommunityTemplate, type CommunityTemplate } from "./templates";
@@ -150,6 +152,7 @@ class App {
       if (e.key === "s" || e.key === "S") {
         e.preventDefault();
         this.store.persistForce();
+        if (this.tool === "document") this.renderVersionHistory();
         snackbar("Documento salvato con successo!");
         const label = document.getElementById("saveLabel");
         const t = new Date().toLocaleTimeString("it", { hour: "2-digit", minute: "2-digit" });
@@ -987,13 +990,15 @@ class App {
 
     byId("gridQuick").onclick = () => {
       const show = !(this.s.showColumns || this.s.showMargins);
-      this.store.setSettings({ showColumns: show, showMargins: show });
+      this.store.setSetting("showColumns", show);
+      this.store.setSetting("showMargins", show);
       byId("gridQuick").classList.toggle("is-active", show);
     };
     const saveQuick = byId("saveQuick");
     if (saveQuick) {
       saveQuick.onclick = () => {
         this.store.persistForce();
+        if (this.tool === "document") this.renderVersionHistory();
         snackbar("Documento salvato con successo!");
         const label = document.getElementById("saveLabel");
         const t = new Date().toLocaleTimeString("it", { hour: "2-digit", minute: "2-digit" });
@@ -1815,6 +1820,11 @@ class App {
         <h3>${icon("public", "sm")} Condividi layout</h3>
         <button class="btn btn--tonal btn--sm" style="width:100%" id="btnSidebarPublish">${icon("cloud_upload")} Pubblica nel Mondo</button>
         <p class="help">Salva il layout e il contenuto di questo documento come modello pubblico offline.</p>
+      </div>
+      <div class="section">
+        <h3>${icon("history", "sm")} Cronologia versioni</h3>
+        <p class="help" style="margin-top:-6px">Ogni salvataggio (Ctrl+S o il pulsante Salva) tiene uno snapshot locale — clicca "Ripristina" per tornare a una versione precedente.</p>
+        <div id="versionHistory"></div>
       </div>`;
   }
   bindDocument() {
@@ -1853,10 +1863,46 @@ class App {
       };
     });
     this.updateDocQuick();
+    this.renderVersionHistory();
     const pubBtn = document.getElementById("btnSidebarPublish");
     if (pubBtn) {
       pubBtn.onclick = () => this.openPublishModal();
     }
+  }
+  renderVersionHistory() {
+    const host = document.getElementById("versionHistory");
+    if (!host) return;
+    const versions = listVersions(this.store.state.id);
+    if (!versions.length) {
+      host.innerHTML = `<div class="empty-state" style="padding:16px 8px">${icon("history_toggle_off")}<b>Nessuno snapshot ancora</b><span class="help">Premi Ctrl+S per crearne uno.</span></div>`;
+      return;
+    }
+    host.innerHTML = versions
+      .map((v: VersionSnapshot, i: number) => {
+        const words = v.source.trim() ? v.source.trim().split(/\s+/).length : 0;
+        return `<div class="version-row">
+          <div class="version-meta">
+            <b>${i === 0 ? "Più recente" : relTime(v.ts)}</b>
+            <span>${new Date(v.ts).toLocaleString("it")} · ${words.toLocaleString("it")} parole</span>
+          </div>
+          ${i === 0 ? "" : `<button class="btn btn--outlined btn--sm" data-restore-version="${v.id}">${icon("history", "xs")}Ripristina</button>`}
+        </div>`;
+      })
+      .join("");
+    host.querySelectorAll<HTMLElement>("[data-restore-version]").forEach((b) => {
+      b.onclick = () => {
+        const v = versions.find((x) => x.id === b.dataset.restoreVersion);
+        if (!v) return;
+        this.pushState(this.store.state.source);
+        this.store.set({ source: v.source });
+        const ed = byId<HTMLTextAreaElement>("editor");
+        if (ed) ed.value = v.source;
+        this.schedule();
+        this.updateEditorStatus();
+        this.lintBadgeUpdate();
+        snackbar(`Versione del ${new Date(v.ts).toLocaleString("it")} ripristinata.`);
+      };
+    });
   }
   updateDocQuick() {
     const host = document.getElementById("docQuick");
