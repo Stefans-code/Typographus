@@ -32,7 +32,9 @@
 }
 .btn--filled:hover { transform: translateY(-1px); box-shadow: 0 10px 22px -6px rgba(var(--md-primary-rgb), .65), 0 1px 2px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.5); }
 .btn--filled:active { transform: translateY(0); }
-.btn--tonal { background: var(--md-surface-container-high); color: var(--md-on-surface); border: 1px solid var(--hairline); }
+/* secondary buttons get a hint of a raised bevel (a quiet 90s-hardware
+   touch) rather than the flat borders alone */
+.btn--tonal { background: var(--md-surface-container-high); color: var(--md-on-surface); border: 1px solid var(--hairline); box-shadow: inset 0 1px 0 rgba(255,255,255,.18), 0 1px 1px rgba(0,0,0,.06); }
 .btn--elevated { background: var(--md-surface-container); color: var(--accent); box-shadow: var(--md-elevation-1); }
 .btn--outlined { background: transparent; color: var(--md-on-surface); border: 1px solid var(--md-outline); }
 .btn--text { background: transparent; color: var(--accent); padding: 0 10px; }
@@ -50,7 +52,11 @@
 .icon-btn:hover { color: var(--md-on-surface); }
 .icon-btn:hover::after { opacity: var(--md-state-hover); }
 .icon-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-.icon-btn.is-active { background: var(--accent-dim); color: var(--accent); }
+.icon-btn.is-active {
+  background: var(--pop-gradient); color: #fff;
+  box-shadow: 0 2px 8px -2px rgba(var(--md-primary-rgb), .55), inset 0 1px 0 rgba(255,255,255,.4);
+}
+.icon-btn.is-active::before { content: ""; position: absolute; inset: 0; background: var(--glass-sheen); pointer-events: none; }
 
 /* ----------------------------- Chips ----------------------------- */
 .chip {
@@ -60,22 +66,34 @@
 }
 .chip .msi { font-size: 17px; }
 .chip:hover { color: var(--md-on-surface); background: var(--md-surface-container-high); }
-.chip.is-selected { background: var(--accent-dim); color: var(--accent); border-color: transparent; }
+.chip.is-selected {
+  background: var(--pop-gradient); color: #fff; border-color: transparent;
+  box-shadow: 0 2px 8px -2px rgba(var(--md-primary-rgb), .5), inset 0 1px 0 rgba(255,255,255,.4);
+}
+.chip.is-selected::before { content: ""; position: absolute; inset: 0; background: var(--glass-sheen); pointer-events: none; }
 
 /* ----------------------------- Switch ----------------------------- */
+/* recessed "groove" when off (a quiet 90s-hardware touch), glossy Aero
+   pill + a 3D ball thumb when on */
 .switch { position: relative; display: inline-block; width: 40px; height: 24px; flex: none; }
 .switch input { opacity: 0; width: 0; height: 0; position: absolute; }
 .switch .track {
-  position: absolute; inset: 0; border-radius: var(--r-full);
+  position: absolute; inset: 0; border-radius: var(--r-full); overflow: hidden;
   background: var(--md-surface-container-highest); border: 1.5px solid var(--md-outline);
+  box-shadow: inset 0 1px 3px rgba(0,0,0,.18);
   transition: background var(--t-med) var(--ease), border-color var(--t-med); cursor: pointer;
 }
 .switch .thumb {
   position: absolute; top: 5px; left: 5px; width: 12px; height: 12px; border-radius: var(--r-full);
   background: var(--md-outline); transition: all var(--t-med) var(--ease-out);
 }
-.switch input:checked + .track { background: var(--accent); border-color: var(--accent); }
-.switch input:checked + .track .thumb { left: 19px; top: 3px; width: 16px; height: 16px; background: #fff; }
+.switch input:checked + .track { background: var(--pop-gradient); border-color: transparent; box-shadow: var(--glass-glow); }
+.switch input:checked + .track::before { content: ""; position: absolute; inset: 0; background: var(--glass-sheen); pointer-events: none; }
+.switch input:checked + .track .thumb {
+  left: 19px; top: 3px; width: 16px; height: 16px;
+  background: radial-gradient(65% 65% at 35% 30%, #fff 0%, #e8e6f0 60%, #cfcbe0 100%);
+  box-shadow: 0 1px 3px rgba(0,0,0,.35);
+}
 .switch input:focus-visible + .track { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* ----------------------------- Slider ----------------------------- */
@@ -84,23 +102,36 @@
 .slider::-webkit-slider-runnable-track { height: 4px; border-radius: 999px; background: var(--md-surface-container-highest); }
 .slider::-webkit-slider-thumb {
   -webkit-appearance: none; appearance: none; width: 16px; height: 16px; margin-top: -6px;
-  border-radius: 999px; background: var(--accent); border: 2.5px solid var(--md-surface-container-low);
-  box-shadow: 0 1px 3px rgba(0,0,0,.4);
+  border-radius: 999px; background: radial-gradient(65% 65% at 35% 30%, color-mix(in srgb, var(--accent) 55%, white 45%) 0%, var(--accent) 70%);
+  border: 2.5px solid var(--md-surface-container-low);
+  box-shadow: 0 1px 3px rgba(0,0,0,.4), inset 0 1px 1px rgba(255,255,255,.5);
 }
 .slider::-moz-range-track { height: 4px; border-radius: 999px; background: var(--md-surface-container-highest); }
-.slider::-moz-range-thumb { width: 14px; height: 14px; border-radius: 999px; background: var(--accent); border: 2px solid var(--md-surface-container-low); }
+.slider::-moz-range-thumb {
+  width: 14px; height: 14px; border-radius: 999px;
+  background: radial-gradient(65% 65% at 35% 30%, color-mix(in srgb, var(--accent) 55%, white 45%) 0%, var(--accent) 70%);
+  border: 2px solid var(--md-surface-container-low);
+}
 .slider-value { font: 500 12px/1 var(--font-mono); color: var(--md-on-surface); min-width: 46px; text-align: right; white-space: nowrap; letter-spacing: -0.3px; }
 
 /* ------------------------- Segmented buttons ------------------------- */
-.segmented { display: inline-flex; padding: 3px; gap: 2px; border-radius: 10px; background: var(--md-surface-container-high); }
+/* the housing is a shallow recessed slot (90s hardware); the active tab
+   is a small glossy Aero pill inside it, not just a flat white chip */
+.segmented { display: inline-flex; padding: 3px; gap: 2px; border-radius: 10px; background: var(--md-surface-container-high); box-shadow: inset 0 1px 3px rgba(0,0,0,.12); }
 .segmented button {
   position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   height: 28px; padding: 0 12px; border: none; background: transparent; color: var(--md-on-surface-variant);
-  font: 550 12px/1 var(--font-ui); cursor: pointer; border-radius: 7px; transition: color var(--t-fast), background var(--t-fast);
+  font: 550 12px/1 var(--font-ui); cursor: pointer; border-radius: 7px; overflow: hidden;
+  transition: color var(--t-fast), background var(--t-fast), box-shadow var(--t-fast);
 }
-.segmented button .msi { font-size: 17px; }
+.segmented button .msi { font-size: 17px; position: relative; }
+.segmented button span { position: relative; }
 .segmented button:hover { color: var(--md-on-surface); }
-.segmented button.is-active { background: var(--md-surface-container-lowest); color: var(--md-on-surface); box-shadow: 0 1px 2px rgba(0,0,0,.25); }
+.segmented button.is-active {
+  background: var(--pop-gradient); color: #fff;
+  box-shadow: 0 2px 6px -1px rgba(var(--md-primary-rgb), .5), inset 0 1px 0 rgba(255,255,255,.4);
+}
+.segmented button.is-active::before { content: ""; position: absolute; inset: 0; background: var(--glass-sheen); pointer-events: none; }
 
 /* ----------------------------- Cards ----------------------------- */
 .card { background: var(--md-surface-container); border-radius: var(--r-md); border: 1px solid var(--hairline); }
@@ -140,6 +171,13 @@
   background: var(--md-surface-container-high); color: var(--md-on-surface);
   border: 1px solid var(--hairline); border-radius: var(--r-xl); padding: 24px; box-shadow: var(--md-elevation-5);
   transform: scale(0.96); transition: transform var(--t-med) var(--ease-out);
+  position: relative;
+}
+/* a thin glass accent stripe along the top — a nod to a windowed dialog's
+   own title-bar chrome, without gluing gloss across the whole panel */
+.dialog::before {
+  content: ""; position: absolute; top: 0; left: 0; right: 0; height: 4px;
+  background: var(--pop-gradient); border-radius: var(--r-xl) var(--r-xl) 0 0;
 }
 .scrim.is-open .dialog { transform: scale(1); }
 .dialog h2 { margin: 0 0 8px; font: 600 19px/1.2 var(--font-ui); letter-spacing: -0.3px; }
@@ -168,13 +206,16 @@
 [data-tip]:hover::before { opacity: 1; transform: translateX(-50%) translateY(0); }
 
 /* ----------------------------- Badge ----------------------------- */
-.badge { display: inline-flex; align-items: center; gap: 4px; height: 19px; padding: 0 7px; border-radius: var(--r-full); background: var(--accent); color: var(--on-accent); font: 600 10.5px/1 var(--font-ui); }
+.badge { position: relative; display: inline-flex; align-items: center; gap: 4px; height: 19px; padding: 0 7px; border-radius: var(--r-full); overflow: hidden; background: var(--pop-gradient); color: #fff; font: 600 10.5px/1 var(--font-ui); box-shadow: inset 0 1px 0 rgba(255,255,255,.35); }
+.badge::before { content: ""; position: absolute; inset: 0; background: var(--glass-sheen); pointer-events: none; }
+.badge > * { position: relative; }
 .badge--error { background: var(--md-error); color: var(--md-on-error); }
-.badge--neutral { background: var(--md-surface-container-highest); color: var(--md-on-surface-variant); }
+.badge--neutral { background: var(--md-surface-container-highest); color: var(--md-on-surface-variant); box-shadow: none; }
+.badge--neutral::before { display: none; }
 
 /* ----------------------------- Linear progress ----------------------------- */
-.progress { height: 5px; border-radius: 999px; background: var(--md-surface-container-highest); overflow: hidden; }
-.progress > i { display: block; height: 100%; background: var(--accent); border-radius: 999px; transition: width var(--t-med) var(--ease); }
+.progress { height: 5px; border-radius: 999px; background: var(--md-surface-container-highest); overflow: hidden; box-shadow: inset 0 1px 2px rgba(0,0,0,.15); }
+.progress > i { display: block; height: 100%; background: var(--pop-gradient); border-radius: 999px; transition: width var(--t-med) var(--ease); }
 
 .divider { height: 1px; background: var(--hairline); border: none; margin: 0; }
 
