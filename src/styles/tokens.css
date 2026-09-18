@@ -199,11 +199,22 @@
   --md-elevation-5: 0 22px 50px -14px rgba(30,20,5,.46);
 }
 
-/* A little variety for template categories — two quiet accent tints,
-   not a design "layer." The interface itself stays the plain, calm
-   editorial system: no gradients, no offset shadows, nothing that
-   competes with the document being worked on. */
+/* =============================================================
+   "Aero Dream" — the '90s/2000s pop palette (one accent, one
+   companion violet — still not a rainbow), rendered the way that
+   era actually rendered ambition: glossy gradients with a glass
+   highlight sheen and a soft colored glow, the way Windows Aero
+   dressed up a plain button — not the flat, hard-edged minimalism
+   everything settled into since. Applied to "chrome" (brand mark,
+   primary actions, the rail's FAB) — not to data cards or dense
+   panels, which stay calm and legible.
+   ============================================================= */
 :root {
   --pop-violet: #7b5cff;
   --pop-gold: #b8863f;
+  --pop-gradient: linear-gradient(160deg, color-mix(in srgb, var(--accent) 88%, white 12%) 0%, var(--accent) 45%, var(--pop-violet) 100%);
+  /* the glass sheen: a bright highlight band across the top third,
+     fading to nothing — glued on top of --pop-gradient via ::before */
+  --glass-sheen: linear-gradient(180deg, rgba(255,255,255,.55) 0%, rgba(255,255,255,.16) 42%, rgba(255,255,255,0) 70%);
+  --glass-glow: 0 6px 18px -4px rgba(var(--md-primary-rgb), .55), 0 1px 2px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.4);
 }

@@ -18,8 +18,20 @@
 .btn:disabled { cursor: not-allowed; opacity: .5; }
 .btn:disabled::after { opacity: 0; }
 
-.btn--filled { background: var(--accent); color: var(--on-accent); box-shadow: 0 1px 2px rgba(0,0,0,.25); }
-.btn--filled:hover { box-shadow: 0 2px 10px -2px rgba(var(--md-primary-rgb), .55); }
+/* "Aero" glass button: a glossy gradient with a highlight sheen glued on
+   top (::before, since ::after is the shared hover-tint) and a soft
+   colored glow instead of a flat shadow. */
+.btn--filled {
+  position: relative;
+  background: var(--pop-gradient); color: var(--on-accent);
+  box-shadow: var(--glass-glow);
+  transition: background var(--t-fast), transform var(--t-fast), box-shadow var(--t-fast);
+}
+.btn--filled::before {
+  content: ""; position: absolute; inset: 0; background: var(--glass-sheen); pointer-events: none;
+}
+.btn--filled:hover { transform: translateY(-1px); box-shadow: 0 10px 22px -6px rgba(var(--md-primary-rgb), .65), 0 1px 2px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.5); }
+.btn--filled:active { transform: translateY(0); }
 .btn--tonal { background: var(--md-surface-container-high); color: var(--md-on-surface); border: 1px solid var(--hairline); }
 .btn--elevated { background: var(--md-surface-container); color: var(--accent); box-shadow: var(--md-elevation-1); }
 .btn--outlined { background: transparent; color: var(--md-on-surface); border: 1px solid var(--md-outline); }
