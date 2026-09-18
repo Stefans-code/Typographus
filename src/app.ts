@@ -254,8 +254,8 @@ class App {
     this.root.innerHTML = `
       <header class="titlebar">
         <div class="tb-brand">
-          <span class="logo" style="width:26px;height:26px;border-radius:7px;display:grid;place-items:center;background:#07070a">
-            <img src="${BRAND_ICON}" alt="" style="width:20px;height:20px">
+          <span class="logo">
+            <img src="${BRAND_ICON}" alt="">
           </span>
           <span class="name">Typographus</span><span class="ver">v0.1</span>
         </div>
