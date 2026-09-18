@@ -212,9 +212,17 @@
 :root {
   --pop-violet: #7b5cff;
   --pop-gold: #b8863f;
-  --pop-gradient: linear-gradient(160deg, color-mix(in srgb, var(--accent) 88%, white 12%) 0%, var(--accent) 45%, var(--pop-violet) 100%);
-  /* the glass sheen: a bright highlight band across the top third,
-     fading to nothing — glued on top of --pop-gradient via ::before */
-  --glass-sheen: linear-gradient(180deg, rgba(255,255,255,.55) 0%, rgba(255,255,255,.16) 42%, rgba(255,255,255,0) 70%);
-  --glass-glow: 0 6px 18px -4px rgba(var(--md-primary-rgb), .55), 0 1px 2px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.4);
+  /* single-hue "candy button" shading — light top, true accent middle,
+     darker bottom — the actual Aero recipe. A two-hue diagonal blend
+     is the thing that reads as a generic AI-gradient logo; a real Aero
+     button never did that. */
+  --pop-gradient: linear-gradient(180deg,
+    color-mix(in srgb, var(--accent) 55%, white 45%) 0%,
+    var(--accent) 55%,
+    color-mix(in srgb, var(--accent) 78%, black 22%) 100%);
+  /* the glass sheen: a restrained pill-shaped highlight hugging the top
+     edge — the actual Aero-button/orb reflection, not a wash across the
+     whole face (that reads as a generic soft-gradient logo, not glass) */
+  --glass-sheen: radial-gradient(85% 90% at 50% 0%, rgba(255,255,255,.55) 0%, rgba(255,255,255,.15) 55%, rgba(255,255,255,0) 78%);
+  --glass-glow: 0 6px 16px -4px rgba(var(--md-primary-rgb), .5), 0 1px 2px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.5), inset 0 -1px 0 rgba(0,0,0,.25);
 }
