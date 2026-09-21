@@ -524,3 +524,20 @@ body.resizing-active .preview-scroll {
   width: 150px;
 }
 
+
+/* Lite mode (weak PCs): drop GPU-heavy effects and motion. */
+.lite *, .lite *::before, .lite *::after {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  animation-duration: 0.01ms !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+.lite .dialog, .lite .snackbar { box-shadow: 0 2px 8px rgba(0,0,0,.35) !important; }
+
+/* Small screens: tighter chrome. */
+@media (max-width: 1100px), (max-height: 640px) {
+  .rail-item > span:last-child { display: none; }
+  .workspace { grid-template-columns: 56px var(--source-w, 240px) 1fr var(--inspector-w, 260px); }
+  .inspector-body { padding: 8px 14px 28px; }
+}

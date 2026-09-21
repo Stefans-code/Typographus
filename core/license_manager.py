@@ -137,12 +137,95 @@ def remove_token():
         pass
 
 
+# ---------------------------------------------------------------- free trial
+TRIAL_DAYS = 30
+_DAY = 86400
+_TRIAL_REG_KEY = r"Software\Nexflamma\Typographus"
+
+
+def _trial_file() -> str:
+    return os.path.join(license_dir(), "trial.typographus")
+
+
+def _read_trial_records() -> list:
+    """Signed trial records from every storage location (file + registry)."""
+    tokens = []
+    try:
+        with open(_trial_file(), "r", encoding="utf-8") as f:
+            tokens.append(f.read().strip())
+    except Exception:
+        pass
+    if platform.system() == "Windows":
+        try:
+            import winreg
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, _TRIAL_REG_KEY) as k:
+                tokens.append(winreg.QueryValueEx(k, "Trial")[0])
+        except Exception:
+            pass
+    records = []
+    for t in tokens:
+        try:
+            p = _decode_verify(t)
+            if p.get("hwid") == get_hwid() and isinstance(p.get("start"), (int, float)):
+                records.append(p)
+        except Exception:
+            continue
+    return records
+
+
+def _write_trial(start: float, last: float) -> None:
+    token = sign_token({"hwid": get_hwid(), "start": start, "last": last})
+    try:
+        with open(_trial_file(), "w", encoding="utf-8") as f:
+            f.write(token)
+    except Exception:
+        pass
+    if platform.system() == "Windows":
+        try:
+            import winreg
+            with winreg.CreateKey(winreg.HKEY_CURRENT_USER, _TRIAL_REG_KEY) as k:
+                winreg.SetValueEx(k, "Trial", 0, winreg.REG_SZ, token)
+        except Exception:
+            pass
+
+
+def trial_status() -> dict:
+    """Start the 30-day trial on first run; resist deleting one copy of the record
+    (earliest start / latest seen wins) and setting the clock back."""
+    now = time.time()
+    records = _read_trial_records()
+    if records:
+        start = min(r["start"] for r in records)
+        last = max(r.get("last", r["start"]) for r in records)
+    else:
+        start = last = now
+    tampered = now < last - _DAY  # clock moved back by more than a day
+    _write_trial(start, max(last, now))
+    days_left = TRIAL_DAYS - int((max(now, last) - start) // _DAY)
+    if tampered or days_left <= 0:
+        msg = (
+            "Data di sistema alterata: prova gratuita sospesa"
+            if tampered
+            else f"Prova gratuita di {TRIAL_DAYS} giorni terminata"
+        )
+        return {"valid": False, "trial": True, "trialExpired": True, "message": msg}
+    return {
+        "valid": True,
+        "trial": True,
+        "plan": "Prova gratuita",
+        "daysLeft": days_left,
+        "message": "Prova gratuita: "
+        + ("ultimo giorno" if days_left == 1 else f"{days_left} giorni rimanenti"),
+    }
+
+
 def status() -> dict:
     hwid = get_hwid()
     token = read_token()
     if not token:
-        return {"valid": False, "message": "Licenza mancante", "hwid": hwid}
-    res = verify_token(token, hwid)
+        res = trial_status()
+    else:
+        res = verify_token(token, hwid)
     res["hwid"] = hwid
     return res
 

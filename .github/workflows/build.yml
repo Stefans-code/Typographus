@@ -31,6 +31,9 @@ jobs:
     needs: webui
     runs-on: windows-latest
     timeout-minutes: 40
+    env:
+      # Code signing is opt-in: set the SIGNPATH_API_TOKEN secret (see SIGNING.md).
+      SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -48,6 +51,31 @@ jobs:
       - name: Build
         run: build_windows.bat
         shell: cmd
+
+      # --- unsigned installer: input for SignPath (only when signing is configured) ---
+      - name: Upload unsigned installer
+        id: upload-unsigned
+        if: env.SIGNPATH_API_TOKEN != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: Typographus-Windows-unsigned
+          path: build_out/TypographusSetup.exe
+      - name: Sign installer with SignPath
+        if: env.SIGNPATH_API_TOKEN != ''
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG || 'typographus' }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG || 'release-signing' }}
+          github-artifact-id: ${{ steps.upload-unsigned.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: signed
+      - name: Replace installer with the signed one
+        if: env.SIGNPATH_API_TOKEN != ''
+        run: Copy-Item signed\TypographusSetup.exe build_out\TypographusSetup.exe -Force
+        shell: pwsh
+
       - name: Upload Windows installer
         uses: actions/upload-artifact@v4
         with:

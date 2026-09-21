@@ -291,9 +291,9 @@ class MainWindow(QMainWindow):
         self.setWindowFlag(Qt.FramelessWindowHint, True)
         # Fit to the available screen so the window is never larger than the display.
         avail = QGuiApplication.primaryScreen().availableGeometry()
-        self.setMinimumSize(min(960, avail.width() - 20), min(600, avail.height() - 20))
-        w = min(1200, int(avail.width() * 0.85))
-        h = min(780, int(avail.height() * 0.85))
+        self.setMinimumSize(min(800, avail.width() - 20), min(520, avail.height() - 20))
+        w = min(1200, int(avail.width() * 0.92))
+        h = min(780, int(avail.height() * 0.92))
         self.resize(w, h)
         self.move(avail.center().x() - w // 2, avail.center().y() - h // 2)
         ico = _resource("icon.ico")
@@ -418,7 +418,44 @@ class MainWindow(QMainWindow):
             self.web_page.printToPdf(path)
 
 
+def _total_ram_mb() -> int:
+    """Physical RAM in MB (0 if unknown)."""
+    try:
+        if sys.platform == "win32":
+            import ctypes
+
+            class MEMSTATUS(ctypes.Structure):
+                _fields_ = [("dwLength", ctypes.c_ulong), ("dwMemoryLoad", ctypes.c_ulong),
+                            ("ullTotalPhys", ctypes.c_ulonglong), ("ullAvailPhys", ctypes.c_ulonglong),
+                            ("ullTotalPageFile", ctypes.c_ulonglong), ("ullAvailPageFile", ctypes.c_ulonglong),
+                            ("ullTotalVirtual", ctypes.c_ulonglong), ("ullAvailVirtual", ctypes.c_ulonglong),
+                            ("sullAvailExtendedVirtual", ctypes.c_ulonglong)]
+            m = MEMSTATUS()
+            m.dwLength = ctypes.sizeof(MEMSTATUS)
+            ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(m))
+            return int(m.ullTotalPhys // (1024 * 1024))
+        return os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES") // (1024 * 1024)
+    except Exception:
+        return 0
+
+
+def is_low_end() -> bool:
+    """Weak PC: <=4 GB RAM or <=2 logical cores. Override with TYPOGRAPHUS_LITE=1/0."""
+    forced = os.environ.get("TYPOGRAPHUS_LITE")
+    if forced in ("0", "1"):
+        return forced == "1"
+    ram = _total_ram_mb()
+    return (0 < ram <= 4200) or (os.cpu_count() or 4) <= 2
+
+
 def main():
+    lite = is_low_end()
+    if lite:
+        # Lean Chromium: one renderer process, no GPU-heavy extras, small JS heap pressure.
+        flags = os.environ.get("QTWEBENGINE_CHROMIUM_FLAGS", "")
+        flags += " --renderer-process-limit=1 --disable-smooth-scrolling --disable-background-networking" \
+                 " --disable-features=TranslateUI,MediaRouter --disable-extensions"
+        os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = flags.strip()
     if hasattr(Qt, "AA_EnableHighDpiScaling"):
         QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
     app = QApplication(sys.argv)
@@ -432,7 +469,7 @@ def main():
         sys.exit(1)
 
     port = start_server(webui)
-    win = MainWindow(f"http://127.0.0.1:{port}/index.html?v={int(time.time())}")
+    win = MainWindow(f"http://127.0.0.1:{port}/index.html?v={int(time.time())}" + ("&lite=1" if lite else ""))
     win.show()
     sys.exit(app.exec())
 

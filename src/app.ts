@@ -64,6 +64,8 @@ interface LicenseStatus {
   hwid: string;
   plan?: string;
   exp?: string;
+  trial?: boolean;
+  daysLeft?: number;
 }
 interface DesktopBridge {
   minimize(): void;
@@ -117,8 +119,10 @@ class App {
   zoom = 0.62;
   sourceOpen = true;
   inspectorOpen = true;
-  sourceW = 360;
-  inspectorW = 360;
+  // Side panels scale with the window so small screens keep room for the page.
+  sourceW = Math.round(Math.max(240, Math.min(360, window.innerWidth * 0.27)));
+  inspectorW = Math.round(Math.max(260, Math.min(360, window.innerWidth * 0.27)));
+  compactApplied = false;
   lastCompiled = { html: "", footnoteCount: 0, imageCount: 0, citationCount: 0 };
   licenseStatus: LicenseStatus | null = null;
   supabaseUser: any = null;
@@ -233,6 +237,9 @@ class App {
       }
     }
     this.mount();
+    if (this.licenseStatus?.trial && this.licenseStatus.valid) {
+      snackbar(`${this.licenseStatus.message}. Attiva una licenza in Impostazioni → Licenza.`);
+    }
   }
 
   renderLicenseGate(st: LicenseStatus) {
@@ -524,6 +531,19 @@ class App {
     // disable the grid width transition while dragging feels instant
     ws.style.setProperty("--source-w", `${this.sourceW}px`);
     ws.style.setProperty("--inspector-w", `${this.inspectorW}px`);
+
+    // Narrow window: start with the inspector closed (toggle in the titlebar reopens it).
+    if (!this.compactApplied) {
+      this.compactApplied = true;
+      if (window.innerWidth < 1100 && this.inspectorOpen) {
+        this.inspectorOpen = false;
+        ws.classList.add("inspector-collapsed");
+        ws.style.setProperty("--inspector-w", "0px");
+        const icon = document.querySelector("#toggleInspector .msi");
+        if (icon) icon.textContent = "right_panel_open";
+        this.root.querySelectorAll<HTMLElement>(".rail-item").forEach((b) => b.classList.remove("is-active"));
+      }
+    }
   }
 
   titlebar(): string {
@@ -3909,7 +3929,7 @@ class App {
     const st = await desktop.license.status();
     this.licenseStatus = st;
     const cls = st.valid ? "published" : st.message.includes("scaduta") ? "review" : "draft";
-    const label = st.valid ? "Attiva" : st.message.includes("scaduta") ? "Scaduta" : "Non attiva";
+    const label = st.valid ? (st.trial ? "Prova" : "Attiva") : st.message.includes("scaduta") ? "Scaduta" : "Non attiva";
     const authorHandle = st.email ? (st.email.startsWith("@") ? st.email : "@" + st.email.split("@")[0]) : "@tu";
     host.innerHTML = `
       <div class="lic-stat">
@@ -4080,5 +4100,9 @@ function getBlockMd(tagName: string, innerHtml: string): string {
 }
 
 export function startApp(root: HTMLElement) {
+  // The desktop shell adds ?lite=1 on weak PCs (low RAM / few cores): no blur, no animations.
+  if (new URLSearchParams(location.search).get("lite") === "1") {
+    document.documentElement.classList.add("lite");
+  }
   new App(root);
 }
