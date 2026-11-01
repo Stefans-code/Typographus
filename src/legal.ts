@@ -1,12 +1,12 @@
 /* Legal / licensing content shown inside the app (mirrors LICENSE). */
 
 export const COMPANY = {
-  name: "Nexflamma S.r.l.",
+  name: "Nexflamma",
   product: "Typographus",
   version: "0.1",
-  office: "Via della Seta 45, 20100 Milano (MI), Italia",
-  rea: "REA MI-1234567",
-  vat: "IT12345678901",
+  office: "Sede legale in fase di registrazione",
+  rea: "REA in fase di registrazione",
+  vat: "P.IVA in fase di registrazione",
   email: "info@nexflamma.net",
   dpo: "privacy@nexflamma.net",
   year: 2026,
@@ -24,7 +24,7 @@ export const EULA_SECTIONS: EulaSection[] = [
   {
     n: "1",
     title: "Concessione della licenza",
-    body: "Nexflamma S.r.l. concede una licenza non esclusiva, non trasferibile e revocabile per installare ed eseguire Typographus secondo la durata e il numero di postazioni acquistati. Il Software è concesso in licenza, non venduto. Ove richiesto, l'esecuzione può prevedere la validazione crittografica del nodo tramite impronta hardware (HWID).",
+    body: "Nexflamma concede una licenza non esclusiva, non trasferibile e revocabile per installare ed eseguire Typographus secondo la durata e il numero di postazioni acquistati. Il Software è concesso in licenza, non venduto. Ove richiesto, l'esecuzione può prevedere la validazione crittografica del nodo tramite impronta hardware (HWID).",
   },
   {
     n: "2",
@@ -39,7 +39,7 @@ export const EULA_SECTIONS: EulaSection[] = [
   {
     n: "4",
     title: "Proprietà intellettuale",
-    body: "Il Software, il codice sorgente, il design system e i marchi «Typographus» e «Nexflamma» sono e restano di proprietà esclusiva di Nexflamma S.r.l. I componenti open-source di terze parti sono concessi secondo le rispettive licenze (vedi THIRD-PARTY-NOTICES).",
+    body: "Il Software, il codice sorgente, il design system e i marchi «Typographus» e «Nexflamma» sono e restano di proprietà esclusiva di Nexflamma I componenti open-source di terze parti sono concessi secondo le rispettive licenze (vedi THIRD-PARTY-NOTICES).",
   },
   {
     n: "5",

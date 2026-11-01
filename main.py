@@ -5,7 +5,7 @@ Native Python (PySide6) application that renders the Typographus UI with the
 embedded web engine, served locally and fully offline. Python provides the
 native parts: frameless window chrome, license backend (HWID, offline),
 print-to-PDF and file downloads (ePub / HTML). The compiled UI lives in ./webui
-(no loose JS/TS sources). © 2026 Nexflamma S.r.l.
+(no loose JS/TS sources). © 2026 Nexflamma
 """
 import functools
 import http.server

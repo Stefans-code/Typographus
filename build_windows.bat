@@ -12,7 +12,7 @@ if exist build_out rmdir /S /Q build_out
 if exist build_tmp rmdir /S /Q build_tmp
 %PY% -m PyInstaller --noconfirm --onedir --windowed --name Typographus ^
   --icon icon.ico --distpath build_out --workpath build_tmp ^
-  --add-data "webui;webui" --add-data "icon.ico;." --add-data "icon.png;." ^
+  --add-data "webui;webui" --add-data "icon.ico;." --add-data "icon.png;." --add-data "LICENSE;." --add-data "THIRD-PARTY-NOTICES.md;." ^
   --hidden-import core.license_manager ^
   main.py
 

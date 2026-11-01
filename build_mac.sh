@@ -33,7 +33,7 @@ fi
 
 "$PY" -m PyInstaller --noconfirm --onedir --windowed --name Typographus \
   "${ICON_ARG[@]}" --distpath build_out --workpath build_tmp \
-  --add-data "webui:webui" --add-data "icon.ico:." --add-data "icon.png:." \
+  --add-data "webui:webui" --add-data "icon.ico:." --add-data "icon.png:." --add-data "LICENSE:." --add-data "THIRD-PARTY-NOTICES.md:." \
   --hidden-import core.license_manager \
   main.py
 

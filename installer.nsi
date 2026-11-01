@@ -1,5 +1,5 @@
 ; Typographus — Windows installer (NSIS)
-; (c) 2026 Nexflamma S.r.l.
+; (c) 2026 Nexflamma
 ; Wraps the PyInstaller onedir build (build_out\Typographus\) produced by
 ; build_windows.bat into a normal double-click Windows installer.
 
@@ -43,7 +43,7 @@ Section "Typographus" SEC01
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Typographus" \
     "UninstallString" "$INSTDIR\Uninstall.exe"
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Typographus" \
-    "Publisher" "Nexflamma S.r.l."
+    "Publisher" "Nexflamma"
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Typographus" \
     "DisplayIcon" "$INSTDIR\Typographus.exe"
 SectionEnd

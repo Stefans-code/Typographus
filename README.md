@@ -6,7 +6,7 @@ ePub 3, indice, note, bibliografia, colophon, metriche di leggibilità.
 
 L'interfaccia (lo stile "Atelier" grafite/accento) è disegnata dal motore web
 incorporato e **compilata** in `webui/` — nessun sorgente JS/TS nel progetto.
-Tutto **offline**. © 2026 Nexflamma S.r.l. — software proprietario (vedi `LICENSE`).
+Tutto **offline**. © 2026 Nexflamma — software proprietario (vedi `LICENSE`).
 
 ## Avvio (sviluppo)
 ```bash
