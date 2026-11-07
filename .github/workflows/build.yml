@@ -87,7 +87,10 @@ jobs:
   # ---------- macOS: universal-ish DMG (arm64 native runner) ----------
   macos:
     needs: webui
-    runs-on: macos-14
+    runs-on: macos-15
+    # macOS 14 ritirato da GitHub il 2/11/2026: si compila su macOS 15 ma per macOS 14+.
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "14.0"
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
