@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "Editorial & typesetting engine — Markdown/DOCX to high-fidelity print & ePub.",
-  "author": "Nexflamma S.r.l. <info@nexflamma.net>",
+  "author": "Nexflamma <info@nexflamma.net>",
   "license": "SEE LICENSE IN LICENSE",
   "type": "module",
   "main": "electron/main.cjs",
@@ -44,7 +44,7 @@
   "build": {
     "appId": "com.nexflamma.typographus",
     "productName": "Typographus",
-    "copyright": "© 2026 Nexflamma S.r.l.",
+    "copyright": "© 2026 Nexflamma",
     "directories": {
       "output": "release",
       "buildResources": "build"

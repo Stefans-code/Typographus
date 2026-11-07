@@ -1,6 +1,6 @@
 @echo off
 REM Typographus (Python + embedded web UI) - build the Windows app (.exe, onedir).
-REM (c) 2026 Nexflamma S.r.l.   |   the compiled UI lives in webui/ (offline).
+REM (c) 2026 Nexflamma   |   the compiled UI lives in webui/ (offline).
 echo ===========================================
 echo [INFO] Building Typographus for Windows...
 echo ===========================================

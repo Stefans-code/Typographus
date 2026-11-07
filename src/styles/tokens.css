@@ -52,16 +52,16 @@
 [data-theme="light"] {
   color-scheme: light;
 
-  /* accent — ink-red, the colour of a proofreader's pen, used sparingly */
-  --accent: #8a2e2e;
-  --accent-strong: #6f2323;
-  --accent-dim: rgba(138, 46, 46, 0.12);
-  --on-accent: #fff9f2;
+  /* accent — fiamma Nexflamma (identita' comune a tutti i prodotti), used sparingly */
+  --accent: #c2410c;
+  --accent-strong: #9a3412;
+  --accent-dim: rgba(194, 65, 12, 0.12);
+  --on-accent: #ffffff;
 
   --md-primary: var(--accent);
   --md-on-primary: var(--on-accent);
-  --md-primary-container: #f4dbd6;
-  --md-on-primary-container: #3d0f0f;
+  --md-primary-container: #ffedd5;
+  --md-on-primary-container: #431407;
 
   --md-secondary: #6b6355;
   --md-on-secondary: #ffffff;
@@ -103,11 +103,11 @@
 
   --md-inverse-surface: #362f26;
   --md-inverse-on-surface: #f7f0e6;
-  --md-inverse-primary: #e2938c;
+  --md-inverse-primary: #ff8a57;
 
   --md-scrim: #000;
 
-  --md-primary-rgb: 138, 46, 46;
+  --md-primary-rgb: 194, 65, 12;
   --md-on-surface-rgb: 33, 29, 23;
 
   --doc-canvas: #ccc4b0;
@@ -124,15 +124,15 @@
 [data-theme="dark"] {
   color-scheme: dark;
 
-  --accent: #e2938c;
-  --accent-strong: #eaada7;
-  --accent-dim: rgba(226, 147, 140, 0.18);
-  --on-accent: #2c0c0a;
+  --accent: #ff5e1e;
+  --accent-strong: #ff7a45;
+  --accent-dim: rgba(255, 94, 30, 0.18);
+  --on-accent: #0a0a0a;
 
   --md-primary: var(--accent);
   --md-on-primary: var(--on-accent);
-  --md-primary-container: #5c231f;
-  --md-on-primary-container: #ffdad4;
+  --md-primary-container: #4a1d08;
+  --md-on-primary-container: #ffdccc;
 
   --md-secondary: #c9bfa9;
   --md-on-secondary: #29251d;
@@ -174,11 +174,11 @@
 
   --md-inverse-surface: #ece4d7;
   --md-inverse-on-surface: #201b15;
-  --md-inverse-primary: #8a2e2e;
+  --md-inverse-primary: #c2410c;
 
   --md-scrim: #000;
 
-  --md-primary-rgb: 226, 147, 140;
+  --md-primary-rgb: 255, 94, 30;
   --md-on-surface-rgb: 236, 228, 215;
 
   --doc-canvas: #0c0a08;

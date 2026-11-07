@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Typographus (Python + embedded web UI) - build a universal Linux AppImage.
-# (c) 2026 Nexflamma S.r.l.   |   the compiled UI lives in webui/ (offline).
+# (c) 2026 Nexflamma   |   the compiled UI lives in webui/ (offline).
 #
 # An AppImage is the closest thing Linux has to a single "universal
 # installer": one executable file, no package manager, runs on (almost)

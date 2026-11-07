@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Typographus (Python + embedded web UI) - build the macOS app (.app, onedir).
-# (c) 2026 Nexflamma S.r.l.   |   the compiled UI lives in webui/ (offline).
+# (c) 2026 Nexflamma   |   the compiled UI lives in webui/ (offline).
 set -euo pipefail
 cd "$(dirname "$0")"
 

@@ -30,22 +30,25 @@ hardware fingerprinting (HWID).
 
 Nexflamma concede una licenza non esclusiva, non trasferibile e revocabile per
 installare ed eseguire il Software secondo la durata e il numero di postazioni
-acquistati. Il Software è concesso in licenza, non venduto.
+acquistati. Il Software è concesso in licenza, non venduto. In abbonamento la
+licenza vale per il periodo pagato: dopo la disdetta resta attiva fino alla fine
+di quel periodo e poi cessa. / A subscription license is valid for the paid
+period: after cancellation it stays active until the end of that period.
 
 ================================================================================
 2. DIRITTO DI RECESSO & WAIVER OF WITHDRAWAL — Recesso
 ================================================================================
 In conformità con l'Articolo 59, lett. o) del Codice del Consumo italiano e con
 le direttive UE sui contratti a distanza: poiché il prodotto consiste in
-contenuti digitali forniti tramite download immediato, l'utente riconosce ed
-accetta espressamente che, con l'avvio della fornitura o l'attivazione della
-chiave di licenza, si perde il diritto di recesso di 14 giorni. Nexflamma offre
+contenuti digitali forniti subito, il diritto di recesso di 14 giorni non si
+applica se, al momento dell'acquisto, l'utente ha chiesto espressamente
+l'esecuzione immediata e ha riconosciuto di perdere così il diritto di recesso. Nexflamma offre
 tuttavia una garanzia di rimborso commerciale valida per 72 ore (3 giorni)
 dall'acquisto.
 
-English: Under EU and Italian law, the consumer explicitly consents to immediate
-performance and acknowledges that the 14-day right of withdrawal is waived upon
-the start of download or activation. Nexflamma offers a direct commercial refund
+English: Under EU and Italian law, the 14-day right of withdrawal does not
+apply if, at purchase, the consumer expressly requested immediate performance
+and acknowledged losing the right of withdrawal. Nexflamma offers a direct commercial refund
 window of 72 hours (3 days) from original acquisition.
 
 ================================================================================
@@ -66,36 +69,43 @@ dell'utente.
 4. INTELLECTUAL PROPERTY — Proprietà intellettuale
 ================================================================================
 The Software, its source code, design system, trademarks and the "Typographus"
-and "Nexflamma" names are and remain the exclusive property of Nexflamma
+and "Nexflamma" names are and remain the exclusive property of Nexflamma.
 Third-party open-source components are licensed under their respective licenses
 (see THIRD-PARTY-NOTICES).
 
 ================================================================================
 5. WARRANTY DISCLAIMER & LIABILITY — Garanzia e responsabilità
 ================================================================================
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED. To the maximum extent permitted by law, Nexflamma shall not be liable
-for any indirect, incidental or consequential damages. Nothing in this license
-limits the consumer's mandatory statutory rights under the Codice del Consumo.
+To the extent permitted by law, THE SOFTWARE IS PROVIDED "AS IS". Nexflamma
+shall not be liable for indirect, incidental or consequential damages, except in
+case of willful misconduct or gross negligence. AI features (rewrite, paraphrase,
+checks) may produce wrong results that you must verify. Nothing in this license
+limits the consumer's mandatory statutory rights under the Codice del Consumo,
+including the legal guarantee of conformity for digital content.
+Nei limiti di legge il Software è fornito "così com'è"; i risultati delle
+funzioni AI vanno verificati; restano salvi i diritti inderogabili del
+consumatore, compresa la garanzia legale di conformità.
 
 ================================================================================
 6. PRIVACY (GDPR) — Trattamento dei dati
 ================================================================================
 Nexflamma acts as Data Controller pursuant to Art. 13 of Regulation (EU)
-2016/679. Typographus stores documents and preferences LOCALLY on your device
-(LocalStorage); no editorial content is transmitted to Nexflamma. To exercise
-your rights (Artt. 15-22 GDPR) contact privacy@nexflamma.net.
+2016/679. Typographus stores documents and preferences locally on your device.
+For licensing it sends a hardware identifier (HWID) to Nexflamma and checks for
+updates. Your content leaves the device only when you use a feature that needs
+it: publishing a community template (stored by Nexflamma with your account),
+creating a share link (the document is uploaded to file.io, a third-party
+service, for 7 days), opening it in Overleaf or publishing to your WordPress
+site (sent to those services). Details: https://nexflamma.net/#/privacy.
+To exercise your rights (Artt. 15-22 GDPR) contact privacy@nexflamma.net.
+I contenuti escono dal computer solo con queste funzioni, su tua richiesta.
 
 ================================================================================
 7. GOVERNING LAW & JURISDICTION — Legge applicabile
 ================================================================================
-Questi termini sono regolati dalla legge italiana. Qualsiasi controversia sarà
-devoluta alla competenza esclusiva del Foro di Milano, fatto salvo il foro
-inderogabile del consumatore secondo il Codice del Consumo.
-
---------------------------------------------------------------------------------
-L'uso continuato del Software costituisce piena accettazione del presente
-contratto. Continued use of the Software constitutes full acceptance of this
-agreement.
+Questi termini sono regolati dalla legge italiana. Per le controversie è
+competente il foro della sede di Nexflamma; se l'utente è un consumatore, quello
+del suo luogo di residenza o domicilio. / Governed by Italian law; courts of
+Nexflamma's seat, or of the consumer's residence if you are a consumer.
 
 © 2026 Nexflamma — info@nexflamma.net

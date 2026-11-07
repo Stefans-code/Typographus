@@ -3151,6 +3151,7 @@ class App {
         <div class="home-hero-text">
           <h1>Typographus</h1>
           <p>Motore editoriale e di impaginazione tipografica ad alta precisione.</p>
+          <p style="font-size:12px;opacity:.7;margin-top:2px">un prodotto Nexflamma</p>
         </div>
         <div class="home-hero-actions">
           <button class="btn btn--filled" id="homeNewBlank">${icon("add")}Nuovo documento</button>
