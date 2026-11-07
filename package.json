@@ -1,6 +1,6 @@
 {
   "name": "typographus",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Editorial & typesetting engine — Markdown/DOCX to high-fidelity print & ePub.",
   "author": "Nexflamma <info@nexflamma.net>",

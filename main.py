@@ -35,7 +35,7 @@ from core import typst_tool
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 PREFERRED_PORT = 47821  # fixed so the web origin (and its localStorage) is stable
-APP_VERSION = "0.1.0"  # keep in sync with package.json
+APP_VERSION = "0.1.1"  # keep in sync with package.json
 
 # Nexflamma's shared update-check convention (same pattern already used by
 # Datarium/Vocius): a small static JSON published on the marketing site,
